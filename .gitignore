@@ -1,0 +1,33 @@
+# 编译生成的文件
+/target/
+
+# 运行时生成的文件
+/data/logs/
+/data/logs/*.log
+/data/pic/temp/
+/data/pic/test/
+/data/sessions/*/
+/data/sessions/*/*
+
+# 调试文件
+**/*.rs.bk
+*.pdb
+
+# IDE相关
+.idea/
+.vscode/
+*.iml
+*.swp
+.DS_Store
+
+# 环境文件（包含敏感信息）
+.env
+!.env.example
+
+# 大文件（如字体）
+# *.ttf  # 保留字体文件
+*.otf
+
+# 临时测试文件
+/test_*.log
+*.tmp
