@@ -10,20 +10,23 @@ pub struct ChatCompletionResponse {
     pub created: u64,
     #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub choices: Vec<ChatCompletionChoice>,
+    #[serde(default)]
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct ChatCompletionChoice {
     #[serde(default)]
     pub index: u32,
+    #[serde(default)]
     pub message: ChatCompletionMessage,
     #[serde(default)]
     pub finish_reason: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct ChatCompletionMessage {
     #[serde(default)]
     pub role: String,
@@ -31,7 +34,7 @@ pub struct ChatCompletionMessage {
     pub content: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Usage {
     #[serde(default = "default_token_count")]
     pub prompt_tokens: u32,

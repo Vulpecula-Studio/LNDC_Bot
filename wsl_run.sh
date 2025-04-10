@@ -63,7 +63,7 @@ LOG_FILE="./data/logs/wsl_bot_$(date +%Y%m%d_%H%M%S).log"
 echo -e "${GREEN}日志将同时输出到: $LOG_FILE${NC}"
 
 # 设置日志级别为info，使INFO级别的日志输出到终端
-export RUST_LOG=info,rust_discord_bot=info
+export RUST_LOG=info,rust_discord_bot=info,rust_discord_bot::api=debug
 
 # 运行程序，将输出同时写入终端和日志文件
 echo -e "${GREEN}启动Discord机器人...${NC}"

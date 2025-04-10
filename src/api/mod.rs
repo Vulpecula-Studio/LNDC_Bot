@@ -34,6 +34,7 @@ impl APIClient {
         
         let client = Client::builder()
             .default_headers(headers)
+            .timeout(std::time::Duration::from_secs(300))
             .build()
             .context("创建HTTP客户端失败")?;
             
