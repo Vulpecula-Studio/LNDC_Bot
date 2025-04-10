@@ -221,6 +221,120 @@ data/
     └── ...
 ```
 
+## Docker部署
+
+本项目提供Docker部署支持，可以通过以下方式快速部署：
+
+### Docker镜像地址
+
+```
+ghcr.io/vulpecula-studio/lndc_bot:main
+```
+
+### 基本部署命令
+
+```bash
+docker run -d \
+  --name rust-discord-bot \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/.env:/app/.env" \
+  --restart unless-stopped \
+  ghcr.io/vulpecula-studio/lndc_bot:main
+```
+
+### 环境变量说明
+
+在`.env`文件中配置以下环境变量：
+
+| 环境变量 | 必填 | 说明 | 示例值 |
+|---------|------|------|--------|
+| `DISCORD_TOKEN` | ✅ | Discord机器人令牌，从Discord开发者门户获取 | `MTM1ODAxxxxx.GUb4T2.P78heKOxxx` |
+| `DISCORD_CHANNEL_WHITELIST` | ❌ | 允许机器人响应的频道ID，用逗号分隔，留空表示所有频道 | `123456789,987654321` |
+| `FASTGPT_API_URL` | ✅ | FastGPT API的URL地址 | `https://fastgpt.example.com/api/v1/chat/completions` |
+| `FASTGPT_AUTH_TOKEN` | ✅ | FastGPT API的访问令牌 | `fastgpt-xZzocwADValX7c58UKotmqWTAP9Q` |
+| `FONT_PATHS` | ✅ | 字体文件路径，多个路径用逗号分隔 | `./LXGWWenKaiGBScreen.ttf` |
+| `FONT_SIZE` | ❌ | 生成图片中的字体大小 | `20` |
+| `PADDING` | ❌ | 生成图片的内边距 | `30` |
+| `WKHTMLTOIMAGE_PATH` | ❌ | wkhtmltoimage可执行文件路径 | `/usr/bin/wkhtmltoimage` |
+| `SESSION_EXPIRY` | ❌ | 会话过期时间（秒） | `3600` |
+| `RUST_LOG` | ❌ | 日志级别，可选值：trace, debug, info, warn, error | `info` |
+
+### 持久化目录说明
+
+容器挂载以下目录实现数据持久化：
+
+| 挂载路径 | 说明 |
+|---------|------|
+| `/app/data` | 存储机器人生成的所有数据，包括日志、临时图片和会话信息 |
+| `/app/data/logs` | 日志文件存储目录 |
+| `/app/data/pic/temp` | 临时生成的图片存储目录 |
+| `/app/data/sessions` | 用户会话数据存储目录 |
+
+### Docker部署选项说明
+
+| 参数 | 说明 | 建议值 |
+|-----|------|-------|
+| `--name` | 容器名称 | `rust-discord-bot` |
+| `-v` | 挂载卷，格式：`主机路径:容器路径` | 至少挂载数据目录和配置文件 |
+| `--restart` | 容器重启策略 | `unless-stopped`（除非手动停止，否则总是重启） |
+| `-d` | 后台运行容器 | 推荐启用 |
+| `--network` | 网络模式 | 默认bridge，通常不需要特别指定 |
+
+### 使用脚本部署
+
+项目提供了`docker_run.sh`脚本简化Docker操作：
+
+```bash
+# 设置执行权限
+chmod +x docker_run.sh
+
+# 构建镜像（如果不使用预构建镜像）
+./docker_run.sh build
+
+# 运行容器
+./docker_run.sh run
+
+# 查看容器状态
+./docker_run.sh status
+
+# 查看日志
+./docker_run.sh logs
+
+# 停止容器
+./docker_run.sh stop
+
+# 重启容器
+./docker_run.sh restart
+
+# 进入容器shell
+./docker_run.sh shell
+```
+
+### 首次部署示例脚本
+
+```bash
+#!/bin/bash
+
+# 设置变量
+CONTAINER_NAME="rust-discord-bot"
+IMAGE_NAME="ghcr.io/vulpecula-studio/lndc_bot:main"
+
+# 停止并移除现有容器（如果存在）
+docker stop $CONTAINER_NAME 2>/dev/null
+docker rm $CONTAINER_NAME 2>/dev/null
+
+# 运行新容器
+docker run -d \
+  --name $CONTAINER_NAME \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/.env:/app/.env" \
+  --restart unless-stopped \
+  $IMAGE_NAME
+
+echo "容器已启动，查看状态："
+docker ps | grep $CONTAINER_NAME
+```
+
 ## 许可证
 
 本项目采用 [知识共享署名-非商业性使用-禁止演绎 4.0 国际许可协议（CC BY-NC-ND 4.0）](https://creativecommons.org/licenses/by-nc-nd/4.0/deed.zh) 进行许可。
