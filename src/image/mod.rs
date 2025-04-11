@@ -98,23 +98,23 @@ impl ImageGenerator {
             "sans-serif".to_string()
         };
         
-        // 创建字体路径的绝对路径，确保在容器内也能正确加载
-        let absolute_font_path = if !font_path.is_empty() {
+        // 处理字体路径，确保能正确在wkhtmltoimage中使用
+        // 注意：使用相对路径，避免使用绝对路径
+        let font_path_for_css = if !font_path.is_empty() {
             let path = Path::new(&font_path);
             if path.is_absolute() {
-                font_path
+                // 生成一个相对路径形式
+                path.file_name()
+                    .map(|f| format!("./assets/fonts/{}", f.to_string_lossy()))
+                    .unwrap_or_default()
             } else {
-                // 如果是相对路径，转换为绝对路径
-                match std::fs::canonicalize(path) {
-                    Ok(abs_path) => abs_path.to_string_lossy().to_string(),
-                    Err(_) => font_path
-                }
+                font_path
             }
         } else {
-            font_path
+            "./assets/fonts/LXGWWenKaiGBScreen.ttf".to_string()
         };
         
-        debug!("使用字体路径: {}", absolute_font_path);
+        debug!("使用字体路径: {}", font_path_for_css);
         
         // 创建HTML头部和样式
         let html_header = format!(r#"
@@ -125,7 +125,7 @@ impl ImageGenerator {
             <style>
                 @font-face {{
                     font-family: 'LXGW WenKai';
-                    src: url('file:///{font_path}') format('truetype');
+                    src: local('LXGW WenKai'), url('{font_path}') format('truetype');
                     font-weight: normal;
                     font-style: normal;
                 }}
@@ -255,7 +255,7 @@ impl ImageGenerator {
         padding = self.config.padding,
         font_size = self.config.font_size,
         code_font_size = self.config.font_size - 2,
-        font_path = absolute_font_path);
+        font_path = font_path_for_css);
         
         // 使用pulldown-cmark解析Markdown
         // 启用所有扩展功能
@@ -293,7 +293,12 @@ impl ImageGenerator {
             }
         };
         
-        debug!("执行命令: {} --quality 95 --width 1024 --enable-smart-width {} {}", 
+        // 获取当前工作目录作为基础路径
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let current_dir_str = current_dir.to_string_lossy();
+        
+        debug!("当前工作目录: {}", current_dir_str);
+        debug!("执行命令: {} --quality 95 --width 1024 --enable-local-file-access {} {}", 
                wkhtmltoimage_path, 
                html_path.display(), 
                output_path.display());
@@ -309,6 +314,9 @@ impl ImageGenerator {
             .arg("UTF-8")  // 确保使用UTF-8编码
             .arg("--enable-local-file-access")  // 允许访问本地文件
             .arg("--disable-javascript")  // 禁用JavaScript以提高稳定性
+            // 添加下面的参数以明确指定字体目录
+            .arg("--dpi")
+            .arg("150")  // 增加DPI以提高文本清晰度
             .arg(html_path.to_str().unwrap())
             .arg(output_path.to_str().unwrap())
             .output()

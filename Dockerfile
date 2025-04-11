@@ -50,6 +50,15 @@ COPY --from=builder /app/target/release/rust_discord_bot .
 # 确保assets/fonts目录存在，并复制字体文件到正确位置
 RUN mkdir -p assets/fonts
 COPY assets/fonts/LXGWWenKaiGBScreen.ttf assets/fonts/
+# 确保字体文件权限正确
+RUN chmod 644 assets/fonts/LXGWWenKaiGBScreen.ttf
+
+# 安装字体工具并注册字体（让wkhtmltoimage可以识别）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    fontconfig && \
+    fc-cache -fv && \
+    rm -rf /var/lib/apt/lists/*
 
 # 复制配置
 COPY .env.example .env
