@@ -99,19 +99,20 @@ impl ImageGenerator {
         };
         
         // 处理字体路径，确保能正确在wkhtmltoimage中使用
-        // 注意：使用相对路径，避免使用绝对路径
         let font_path_for_css = if !font_path.is_empty() {
             let path = Path::new(&font_path);
             if path.is_absolute() {
-                // 生成一个相对路径形式
-                path.file_name()
-                    .map(|f| format!("./assets/fonts/{}", f.to_string_lossy()))
-                    .unwrap_or_default()
+                // 已经是绝对路径，直接使用
+                path.to_string_lossy().to_string()
             } else {
-                font_path
+                // 对于相对路径，转换为绝对路径
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                current_dir.join(path).to_string_lossy().to_string()
             }
         } else {
-            "./assets/fonts/LXGWWenKaiGBScreen.ttf".to_string()
+            // 默认字体路径，使用绝对路径
+            let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            current_dir.join("assets/fonts/LXGWWenKaiGBScreen.ttf").to_string_lossy().to_string()
         };
         
         debug!("使用字体路径: {}", font_path_for_css);

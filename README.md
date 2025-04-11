@@ -56,7 +56,7 @@ FASTGPT_API_URL=https://fastgpt.example.com/api/v1/chat/completions
 FASTGPT_AUTH_TOKEN=your_fastgpt_token_here
 
 # 图片生成配置
-FONT_PATHS=./LXGWWenKaiGBScreen.ttf  # 字体路径，多个路径使用逗号分隔
+FONT_PATHS=./assets/fonts/LXGWWenKaiGBScreen.ttf  # 字体路径，多个路径使用逗号分隔
 FONT_SIZE=20  # 字体大小
 PADDING=30  # 内边距
 
@@ -242,6 +242,22 @@ docker run -d \
   ghcr.io/vulpecula-studio/lndc_bot:main
 ```
 
+### Docker环境字体配置
+
+在Docker容器中，字体文件已经预先安装在固定位置，且不会被用户挂载的数据卷覆盖。如果您使用Docker部署，`.env`文件中的字体路径已默认设置为：
+
+```
+# Docker环境字体路径（默认配置）
+FONT_PATHS=./assets/fonts/LXGWWenKaiGBScreen.ttf
+```
+
+容器内的字体文件位置：
+- `/app/assets/fonts/LXGWWenKaiGBScreen.ttf`
+
+> **注意**：Docker镜像已经配置了正确的字体路径，通常不需要手动修改。字体文件位于主目录，不会被数据卷挂载覆盖，确保了图片渲染功能的稳定性。
+
+> **自定义字体**：如果您需要使用自己的字体，可以修改`.env`文件中的`FONT_PATHS`配置，并确保您指定的字体文件存在于容器内的相应位置。
+
 ### 环境变量说明
 
 在`.env`文件中配置以下环境变量：
@@ -252,7 +268,7 @@ docker run -d \
 | `DISCORD_CHANNEL_WHITELIST` | ❌ | 允许机器人响应的频道ID，用逗号分隔，留空表示所有频道 | `123456789,987654321` |
 | `FASTGPT_API_URL` | ✅ | FastGPT API的URL地址 | `https://fastgpt.example.com/api/v1/chat/completions` |
 | `FASTGPT_AUTH_TOKEN` | ✅ | FastGPT API的访问令牌 | `fastgpt-xZzocwADValX7c58UKotmqWTAP9Q` |
-| `FONT_PATHS` | ✅ | 字体文件路径，多个路径用逗号分隔 | `./LXGWWenKaiGBScreen.ttf` |
+| `FONT_PATHS` | ✅ | 字体文件路径，多个路径用逗号分隔 | `./assets/fonts/LXGWWenKaiGBScreen.ttf` |
 | `FONT_SIZE` | ❌ | 生成图片中的字体大小 | `20` |
 | `PADDING` | ❌ | 生成图片的内边距 | `30` |
 | `WKHTMLTOIMAGE_PATH` | ❌ | wkhtmltoimage可执行文件路径 | `/usr/bin/wkhtmltoimage` |

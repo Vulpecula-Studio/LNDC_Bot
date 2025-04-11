@@ -23,6 +23,21 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 确保字体目录存在
+        run: |
+          mkdir -p assets/fonts
+
+      - name: 验证字体文件
+        run: |
+          if [ -f "LXGWWenKaiGBScreen.ttf" ]; then
+            echo "在根目录找到字体文件，复制到assets/fonts目录"
+            cp LXGWWenKaiGBScreen.ttf assets/fonts/
+          elif [ ! -f "assets/fonts/LXGWWenKaiGBScreen.ttf" ]; then
+            echo "警告：找不到必要的字体文件，将需要在镜像中处理"
+          else
+            echo "字体文件位置正确，无需处理"
+          fi
+
       - name: 设置Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
