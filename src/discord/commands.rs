@@ -7,6 +7,15 @@ use std::fmt::Write;
 
 use super::Context;
 
+// 安全截断字符串助手函数
+fn truncate(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        s
+    } else {
+        &s[..max_len]
+    }
+}
+
 /// 向AI提问并获取图片形式的回答
 #[poise::command(slash_command, prefix_command, rename = "答疑bot")]
 pub async fn qa_bot(
@@ -23,42 +32,16 @@ pub async fn qa_bot(
     let user_id = ctx.author().id.to_string();
     
     // 记录命令使用
-    info!(
-        "用户 {} (ID: {}) 使用了/答疑bot命令，问题: {}...",
-        ctx.author().name,
-        user_id,
-        if 问题.len() > 30 { &问题[..30] } else { &问题 }
-    );
+    info!("用户 {}({}) 使用了/答疑bot命令，问题: {}{}", 
+        ctx.author().name, user_id, truncate(&问题, 30), if 问题.len() > 30 { "..." } else { "" });
     
     // 收集所有有效的图片URL
     let mut api_image_urls = Vec::new();
     
-    // 验证并添加图片URL
-    let validate_and_add_image = |url: Option<String>, urls: &mut Vec<String>| -> Result<()> {
-        if let Some(url) = url {
-            // 将任何URL添加到列表中
-            info!("检测到图片URL: {}", url);
-            urls.push(url);
-            Ok(())
-        } else {
-            Ok(())
-        }
-    };
-    
-    // 添加所有图片URL
-    if let Err(e) = validate_and_add_image(图片url1, &mut api_image_urls) {
-        ctx.say(format!("❌ 第一张图片链接错误: {}", e)).await?;
-        return Ok(());
-    }
-    
-    if let Err(e) = validate_and_add_image(图片url2, &mut api_image_urls) {
-        ctx.say(format!("❌ 第二张图片链接错误: {}", e)).await?;
-        return Ok(());
-    }
-    
-    if let Err(e) = validate_and_add_image(图片url3, &mut api_image_urls) {
-        ctx.say(format!("❌ 第三张图片链接错误: {}", e)).await?;
-        return Ok(());
+    // 添加所有有效的图片URL
+    for url_option in [图片url1, 图片url2, 图片url3].iter().flatten() {
+        info!("检测到图片URL: {}", url_option);
+        api_image_urls.push(url_option.clone());
     }
     
     if !api_image_urls.is_empty() {
@@ -71,7 +54,7 @@ pub async fn qa_bot(
     match api_client.get_response_as_image(
         &问题,
         &user_id,
-        if api_image_urls.is_empty() { None } else { Some(&api_image_urls) },
+        api_image_urls.as_slice().into(),
     ).await {
         Ok(response) => {
             // 构建回复
@@ -85,14 +68,14 @@ pub async fn qa_bot(
             }
             
             // 创建嵌入消息
-            let embed = CreateEmbed::default()
-                .title("🤖 AI回答").to_owned()
-                .description(format!("会话ID: `{}`", &session_id[..8])).to_owned()
-                .color(0x3498db).to_owned()
+            let mut embed = CreateEmbed::default();
+            embed.title("🤖 AI回答")
+                .description(format!("会话ID: `{}`", short_session_id(&session_id)))
+                .color(0x3498db)
                 .footer(|f| {
                     f.text(format!("提问者: {}", ctx.author().name))
-                }).to_owned()
-                .timestamp(Utc::now()).to_owned();
+                })
+                .timestamp(Utc::now());
             
             // 发送嵌入消息和图片
             ctx.send(|reply| {
@@ -126,7 +109,7 @@ pub async fn history_sessions(
     // 获取用户ID
     let user_id = ctx.author().id.to_string();
     
-    info!("用户 {} (ID: {}) 请求查看历史会话", ctx.author().name, user_id);
+    info!("用户 {}({}) 请求查看历史会话", ctx.author().name, user_id);
     
     // 获取会话列表
     let sessions = ctx.data().api_client.session_manager.get_user_sessions(&user_id);
@@ -137,20 +120,11 @@ pub async fn history_sessions(
     }
     
     // 构建会话列表消息
-    let mut message = String::new();
+    let mut message = String::with_capacity(1024);
     writeln!(message, "📚 **你的历史会话列表**\n").unwrap();
     
     for (i, session) in sessions.iter().take(10).enumerate() {
-        let last_modified = format_time(session.last_modified);
-        writeln!(
-            message,
-            "**{}. 会话 `{}`**\n   问题: {}\n   时间: {}\n   图片数: {}\n",
-            i + 1,
-            &session.id[..8],
-            session.input_preview,
-            last_modified,
-            session.images
-        ).unwrap();
+        writeln!(message, "{}", format_session_info(i, session)).unwrap();
     }
     
     if sessions.len() > 10 {
@@ -167,7 +141,7 @@ pub async fn history_sessions(
 pub async fn help_command(
     ctx: Context<'_>,
 ) -> Result<()> {
-    info!("用户 {} (ID: {}) 请求帮助", ctx.author().name, ctx.author().id);
+    info!("用户 {}({}) 请求帮助", ctx.author().name, ctx.author().id);
     
     let help_text = r#"# 🤖 Discord AI助手使用指南
 
@@ -211,7 +185,7 @@ pub async fn storage_stats(
     
     let detailed = 详细信息.unwrap_or(false);
     
-    info!("用户 {} (ID: {}) 请求存储统计，详细信息: {}", 
+    info!("用户 {}({}) 请求存储统计，详细信息: {}", 
         ctx.author().name, ctx.author().id, detailed);
     
     // 用户ID
@@ -225,7 +199,7 @@ pub async fn storage_stats(
     let total_images: u32 = sessions.iter().map(|s| s.images).sum();
     
     // 生成统计信息
-    let mut message = String::new();
+    let mut message = String::with_capacity(1024);
     
     writeln!(message, "📊 **存储统计**\n").unwrap();
     writeln!(message, "总会话数: **{}**", total_sessions).unwrap();
@@ -235,20 +209,19 @@ pub async fn storage_stats(
         writeln!(message, "\n**详细会话信息:**\n").unwrap();
         
         for (i, session) in sessions.iter().enumerate() {
-            let last_modified = format_time(session.last_modified);
+            if i >= 15 {
+                writeln!(message, "... 还有 {} 个会话未显示", sessions.len() - 15).unwrap();
+                break;
+            }
+            
             writeln!(
                 message,
                 "{}. 会话 `{}` - {} 个图片 - 最后更新: {}",
                 i + 1,
-                &session.id[..8],
+                short_session_id(&session.id),
                 session.images,
-                last_modified
+                format_time(session.last_modified)
             ).unwrap();
-            
-            if i >= 14 && sessions.len() > 15 {
-                writeln!(message, "... 还有 {} 个会话未显示", sessions.len() - 15).unwrap();
-                break;
-            }
         }
     }
     
@@ -262,4 +235,25 @@ pub async fn storage_stats(
 // 格式化时间辅助函数
 fn format_time(dt: DateTime<Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+// 获取简短会话ID
+fn short_session_id(session_id: &str) -> &str {
+    if session_id.len() > 8 {
+        &session_id[..8]
+    } else {
+        session_id
+    }
+}
+
+// 格式化会话信息
+fn format_session_info(index: usize, session: &crate::session::SessionInfo) -> String {
+    format!(
+        "**{}. 会话 `{}`**\n   问题: {}\n   时间: {}\n   图片数: {}\n",
+        index + 1,
+        short_session_id(&session.id),
+        session.input_preview,
+        format_time(session.last_modified),
+        session.images
+    )
 } 
