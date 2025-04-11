@@ -82,14 +82,39 @@ impl ImageGenerator {
         let font_paths = self.config.font_paths.iter()
             .filter(|path| path.exists())
             .map(|path| path.to_string_lossy().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
+            .collect::<Vec<_>>();
+            
+        let font_path = if !font_paths.is_empty() {
+            // 使用第一个有效的字体路径
+            font_paths[0].clone()
+        } else {
+            // 如果没有有效的字体，使用空字符串
+            "".to_string()
+        };
             
         let font_family = if !font_paths.is_empty() {
             format!("'LXGW WenKai', 'Microsoft YaHei', 'SimHei', sans-serif")
         } else {
             "sans-serif".to_string()
         };
+        
+        // 创建字体路径的绝对路径，确保在容器内也能正确加载
+        let absolute_font_path = if !font_path.is_empty() {
+            let path = Path::new(&font_path);
+            if path.is_absolute() {
+                font_path
+            } else {
+                // 如果是相对路径，转换为绝对路径
+                match std::fs::canonicalize(path) {
+                    Ok(abs_path) => abs_path.to_string_lossy().to_string(),
+                    Err(_) => font_path
+                }
+            }
+        } else {
+            font_path
+        };
+        
+        debug!("使用字体路径: {}", absolute_font_path);
         
         // 创建HTML头部和样式
         let html_header = format!(r#"
@@ -100,7 +125,7 @@ impl ImageGenerator {
             <style>
                 @font-face {{
                     font-family: 'LXGW WenKai';
-                    src: url('file:///root/dcbot/rust_discord_bot/assets/fonts/LXGWWenKaiGBScreen.ttf') format('truetype');
+                    src: url('file:///{font_path}') format('truetype');
                     font-weight: normal;
                     font-style: normal;
                 }}
@@ -229,7 +254,8 @@ impl ImageGenerator {
         font_family = font_family,
         padding = self.config.padding,
         font_size = self.config.font_size,
-        code_font_size = self.config.font_size - 2);
+        code_font_size = self.config.font_size - 2,
+        font_path = absolute_font_path);
         
         // 使用pulldown-cmark解析Markdown
         // 启用所有扩展功能
