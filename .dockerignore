@@ -1,0 +1,29 @@
+# 忽略以下文件和目录
+target/
+.git/
+.github/
+data/
+node_modules/
+**/*.rs.bk
+**/*.swp
+.env
+*.log
+*.lock~
+
+# 忽略临时文件
+**/*.tmp
+**/*.temp
+
+# 忽略测试数据
+tests/data/
+**/test_data/
+
+# 忽略文档
+docs/
+*.md
+!README.md
+
+# 忽略开发配置
+.vscode/
+.idea/
+.DS_Store 
