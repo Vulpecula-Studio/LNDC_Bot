@@ -11,7 +11,7 @@ use tracing::{info, error, debug, warn};
 use crate::config::Config;
 use crate::api::APIClient;
 
-use self::commands::*;
+use commands::*;
 
 pub type Context<'a> = poise::Context<'a, Data, anyhow::Error>;
 

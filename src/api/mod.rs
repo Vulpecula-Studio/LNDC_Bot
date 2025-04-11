@@ -53,22 +53,33 @@ impl APIClient {
     }
     
     /// 从FastGPT获取响应
-    pub async fn get_chat_response(&self, prompt: &str, image_url: Option<&str>) -> Result<ChatResponse> {
+    pub async fn get_chat_response(&self, prompt: &str, image_urls: Option<&[String]>) -> Result<ChatResponse> {
         // 构建消息内容
-        let content = if let Some(url) = image_url {
-            // 如果有图片，创建包含文本和图片的内容
-            json!([
-                {
-                    "type": "text",
-                    "text": prompt
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": url
-                    }
+        let content = if let Some(urls) = image_urls {
+            if urls.is_empty() {
+                // 没有图片，只有文本内容
+                json!(prompt)
+            } else {
+                // 创建包含文本和多个图片的内容
+                let mut content_items = vec![
+                    json!({
+                        "type": "text",
+                        "text": prompt
+                    })
+                ];
+                
+                // 添加所有图片URL
+                for url in urls {
+                    content_items.push(json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": url
+                        }
+                    }));
                 }
-            ])
+                
+                json!(content_items)
+            }
         } else {
             // 只有文本内容
             json!(prompt)
@@ -94,8 +105,13 @@ impl APIClient {
         };
         
         info!("发送FastGPT请求，提示词长度: {}", prompt.len());
-        if let Some(url) = image_url {
-            info!("包含图片URL: {}", url);
+        if let Some(urls) = image_urls {
+            if !urls.is_empty() {
+                info!("包含{}张图片", urls.len());
+                for (i, url) in urls.iter().enumerate() {
+                    debug!("图片URL {}: {}", i+1, url);
+                }
+            }
         }
         
         // 发送请求
@@ -155,7 +171,7 @@ impl APIClient {
         &self, 
         prompt: &str, 
         user_id: &str,
-        image_url: Option<&str>,
+        image_urls: Option<&[String]>,
     ) -> Result<ImageResponse> {
         // 创建会话
         let session_id = self.session_manager.create_session(user_id);
@@ -164,7 +180,7 @@ impl APIClient {
         self.session_manager.save_user_input(&session_id, prompt)?;
         
         // 从API获取响应
-        let chat_response = self.get_chat_response(prompt, image_url).await?;
+        let chat_response = self.get_chat_response(prompt, image_urls).await?;
         
         // 保存响应内容
         self.session_manager.save_response_markdown(&session_id, &chat_response.content)?;

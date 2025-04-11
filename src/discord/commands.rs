@@ -8,11 +8,13 @@ use std::fmt::Write;
 use super::Context;
 
 /// 向AI提问并获取图片形式的回答
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, rename = "答疑bot")]
 pub async fn qa_bot(
     ctx: Context<'_>,
     #[description = "你想问AI的问题"] 问题: String,
-    #[description = "Discord图片链接，可选"] 图片url: Option<String>,
+    #[description = "图片链接，可选"] 图片url1: Option<String>,
+    #[description = "第二张图片链接，可选"] 图片url2: Option<String>,
+    #[description = "第三张图片链接，可选"] 图片url3: Option<String>,
 ) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
@@ -28,19 +30,40 @@ pub async fn qa_bot(
         if 问题.len() > 30 { &问题[..30] } else { &问题 }
     );
     
-    // 创建图片URL
-    let api_image_url = if let Some(url) = 图片url {
-        // 验证图片URL是否来自Discord
-        if url.contains("discordapp.net") || url.contains("cdn.discord.com") {
-            info!("检测到Discord图片URL: {}", url);
-            Some(url)
+    // 收集所有有效的图片URL
+    let mut api_image_urls = Vec::new();
+    
+    // 验证并添加图片URL
+    let validate_and_add_image = |url: Option<String>, urls: &mut Vec<String>| -> Result<()> {
+        if let Some(url) = url {
+            // 将任何URL添加到列表中
+            info!("检测到图片URL: {}", url);
+            urls.push(url);
+            Ok(())
         } else {
-            ctx.say("❌ 只支持Discord图片链接。").await?;
-            return Ok(());
+            Ok(())
         }
-    } else {
-        None
     };
+    
+    // 添加所有图片URL
+    if let Err(e) = validate_and_add_image(图片url1, &mut api_image_urls) {
+        ctx.say(format!("❌ 第一张图片链接错误: {}", e)).await?;
+        return Ok(());
+    }
+    
+    if let Err(e) = validate_and_add_image(图片url2, &mut api_image_urls) {
+        ctx.say(format!("❌ 第二张图片链接错误: {}", e)).await?;
+        return Ok(());
+    }
+    
+    if let Err(e) = validate_and_add_image(图片url3, &mut api_image_urls) {
+        ctx.say(format!("❌ 第三张图片链接错误: {}", e)).await?;
+        return Ok(());
+    }
+    
+    if !api_image_urls.is_empty() {
+        info!("共收集到{}张图片", api_image_urls.len());
+    }
     
     // 调用API获取图片回答
     let api_client = &ctx.data().api_client;
@@ -48,7 +71,7 @@ pub async fn qa_bot(
     match api_client.get_response_as_image(
         &问题,
         &user_id,
-        api_image_url.as_deref(),
+        if api_image_urls.is_empty() { None } else { Some(&api_image_urls) },
     ).await {
         Ok(response) => {
             // 构建回复
@@ -93,7 +116,7 @@ pub async fn qa_bot(
 }
 
 /// 查看历史会话列表
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, rename = "历史会话")]
 pub async fn history_sessions(
     ctx: Context<'_>,
 ) -> Result<()> {
@@ -140,7 +163,7 @@ pub async fn history_sessions(
 }
 
 /// 获取机器人使用指南
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, rename = "帮助")]
 pub async fn help_command(
     ctx: Context<'_>,
 ) -> Result<()> {
@@ -150,9 +173,11 @@ pub async fn help_command(
 
 ## 基本命令
 
-**/答疑bot [问题] [图片url]** - 向AI提问并获取图片形式的回答
+**/答疑bot [问题] [图片url1] [图片url2] [图片url3]** - 向AI提问并获取图片形式的回答
 - `问题`: 你想问AI的问题
-- `图片url`: (可选) Discord图片链接，用于视觉分析
+- `图片url1`: (可选) 第一张图片链接，用于视觉分析
+- `图片url2`: (可选) 第二张图片链接，用于视觉分析
+- `图片url3`: (可选) 第三张图片链接，用于视觉分析
 
 **/历史会话** - 查看你的历史会话列表
 
@@ -163,9 +188,10 @@ pub async fn help_command(
 ## 使用提示
 
 1. 提问时尽量描述清晰，以获得更准确的回答
-2. 图片链接必须是Discord上传的图片链接
-3. 历史会话默认保存，但图片会在2天后自动清理
-4. 每个用户的会话互相隔离，其他人无法看到你的会话内容
+2. 支持任何有效的图片URL地址
+3. 可以同时上传多张图片（最多3张）进行分析
+4. 历史会话默认保存，但图片会在2天后自动清理
+5. 每个用户的会话互相隔离，其他人无法看到你的会话内容
 
 如有问题，请联系管理员。"#;
 
@@ -175,7 +201,7 @@ pub async fn help_command(
 }
 
 /// 查看会话存储状态和统计信息
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, rename = "存储统计")]
 pub async fn storage_stats(
     ctx: Context<'_>,
     #[description = "是否显示详细的统计信息"] 详细信息: Option<bool>,
