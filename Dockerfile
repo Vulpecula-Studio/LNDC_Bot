@@ -47,8 +47,11 @@ RUN apt-get update && \
 # 从构建阶段复制编译好的二进制文件
 COPY --from=builder /app/target/release/rust_discord_bot .
 
-# 复制字体文件和配置
-COPY LXGWWenKaiGBScreen.ttf .
+# 确保assets/fonts目录存在，并复制字体文件到正确位置
+RUN mkdir -p assets/fonts
+COPY assets/fonts/LXGWWenKaiGBScreen.ttf assets/fonts/
+
+# 复制配置
 COPY .env.example .env
 
 # 创建数据目录
