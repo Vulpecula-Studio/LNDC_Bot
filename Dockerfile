@@ -63,6 +63,9 @@ RUN apt-get update && \
 # 复制配置
 COPY .env.example .env
 
+# 确保.env中的路径设置正确
+RUN sed -i 's|FONT_PATHS=.*|FONT_PATHS=./assets/fonts/LXGWWenKaiGBScreen.ttf|g' .env
+
 # 创建数据目录
 RUN mkdir -p data/logs data/pic/temp data/sessions \
     && chmod +x rust_discord_bot

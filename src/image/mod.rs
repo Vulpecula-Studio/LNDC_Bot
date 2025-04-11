@@ -309,14 +309,10 @@ impl ImageGenerator {
             .arg("95")     // 提高图片质量
             .arg("--width")
             .arg("1024")   // 固定宽度
-            .arg("--enable-smart-width")  // 启用智能宽度调整
             .arg("--encoding")
             .arg("UTF-8")  // 确保使用UTF-8编码
             .arg("--enable-local-file-access")  // 允许访问本地文件
             .arg("--disable-javascript")  // 禁用JavaScript以提高稳定性
-            // 添加下面的参数以明确指定字体目录
-            .arg("--dpi")
-            .arg("150")  // 增加DPI以提高文本清晰度
             .arg(html_path.to_str().unwrap())
             .arg(output_path.to_str().unwrap())
             .output()
