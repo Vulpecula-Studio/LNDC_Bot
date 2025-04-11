@@ -230,15 +230,12 @@ pub struct ImageResponse {
 
 // 安全截断UTF-8字符串的辅助函数
 fn safe_truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         return s.to_string();
     }
     
-    // 找到不超过max_len的最大有效字符边界
-    let mut truncated_len = max_len;
-    while !s.is_char_boundary(truncated_len) && truncated_len > 0 {
-        truncated_len -= 1;
-    }
-    
-    s[..truncated_len].to_string()
+    // 截断到指定字符数
+    s.char_indices()
+        .nth(max_len)
+        .map_or(s.to_string(), |(idx, _)| s[..idx].to_string())
 } 

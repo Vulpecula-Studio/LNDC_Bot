@@ -9,10 +9,13 @@ use super::Context;
 
 // 安全截断字符串助手函数
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s
     } else {
-        &s[..max_len]
+        // 确保在字符边界处截断
+        s.char_indices()
+            .nth(max_len)
+            .map_or(s, |(idx, _)| &s[..idx])
     }
 }
 
@@ -33,16 +36,15 @@ pub async fn qa_bot(
     
     // 记录命令使用
     info!("用户 {}({}) 使用了/答疑bot命令，问题: {}{}", 
-        ctx.author().name, user_id, truncate(&问题, 30), if 问题.len() > 30 { "..." } else { "" });
+        ctx.author().name, user_id, truncate(&问题, 30), 
+        if 问题.chars().count() > 30 { "..." } else { "" });
     
     // 收集所有有效的图片URL
-    let mut api_image_urls = Vec::new();
-    
-    // 添加所有有效的图片URL
-    for url_option in [图片url1, 图片url2, 图片url3].iter().flatten() {
-        info!("检测到图片URL: {}", url_option);
-        api_image_urls.push(url_option.clone());
-    }
+    let api_image_urls: Vec<String> = [图片url1, 图片url2, 图片url3]
+        .iter()
+        .filter_map(|opt| opt.clone())
+        .inspect(|url| info!("检测到图片URL: {}", url))
+        .collect();
     
     if !api_image_urls.is_empty() {
         info!("共收集到{}张图片", api_image_urls.len());
