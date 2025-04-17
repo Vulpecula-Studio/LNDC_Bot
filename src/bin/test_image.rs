@@ -13,9 +13,8 @@ fn main() -> Result<()> {
     let markdown_content = std::fs::read_to_string("data/pic/test/test_markdown.md")?;
     println!("开始生成图片...");
     let output_path = PathBuf::from("data/pic/test/test_output.png");
-
-    // 生成图片
-    let result_path = image_generator.create_image_from_markdown(&markdown_content, &output_path)?;
+    let result_path =
+        image_generator.create_image_from_markdown(&markdown_content, &output_path)?;
     println!("图片生成成功: {}", result_path.display());
     Ok(())
 }

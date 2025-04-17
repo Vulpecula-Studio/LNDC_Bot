@@ -252,7 +252,10 @@ impl SessionManager {
                                 if count > 0 {
                                     cleaned_sessions += 1;
                                     cleaned_files += count;
-                                    info!("已清理脱离管理会话 {} 中的 {} 个图片文件", session_id, count);
+                                    info!(
+                                        "已清理脱离管理会话 {} 中的 {} 个图片文件",
+                                        session_id, count
+                                    );
                                 }
                             }
                             Err(e) => error!("清理脱离管理会话 {} 图片时出错: {}", session_id, e),
@@ -267,7 +270,9 @@ impl SessionManager {
                             if let Ok(duration) = now.duration_since(modified) {
                                 if duration.as_secs() > expiry_seconds {
                                     // 会话已过期，清理图片
-                                    if let Some(filename) = session_path.file_name().and_then(|n| n.to_str()) {
+                                    if let Some(filename) =
+                                        session_path.file_name().and_then(|n| n.to_str())
+                                    {
                                         match self.cleanup_session_images(filename) {
                                             Ok(count) => {
                                                 if count > 0 {
@@ -279,10 +284,9 @@ impl SessionManager {
                                                     );
                                                 }
                                             }
-                                            Err(e) => error!(
-                                                "清理会话 {} 图片时出错: {}",
-                                                filename, e
-                                            ),
+                                            Err(e) => {
+                                                error!("清理会话 {} 图片时出错: {}", filename, e)
+                                            }
                                         }
                                     }
                                 }

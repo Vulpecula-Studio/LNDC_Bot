@@ -147,7 +147,11 @@ impl APIClient {
                 }
             }
             let backoff = Duration::from_secs(2_u64.pow(attempts));
-            info!("重试请求，第 {} 次，等待 {} 秒", attempts, backoff.as_secs());
+            info!(
+                "重试请求，第 {} 次，等待 {} 秒",
+                attempts,
+                backoff.as_secs()
+            );
             sleep(backoff).await;
         };
 
@@ -202,7 +206,9 @@ impl APIClient {
         let session_id = self.session_manager.create_session(user_id);
 
         // 保存用户输入
-        self.session_manager.save_user_input(&session_id, prompt).await?;
+        self.session_manager
+            .save_user_input(&session_id, prompt)
+            .await?;
 
         // 从API获取响应
         let chat_response = self.get_chat_response(prompt, image_urls).await?;
