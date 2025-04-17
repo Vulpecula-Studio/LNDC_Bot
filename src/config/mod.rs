@@ -67,7 +67,7 @@ impl Config {
             .collect();
         
         let font_size = env::var("FONT_SIZE")
-            .unwrap_or_else(|_| "20".to_string())
+            .unwrap_or_else(|_| "24".to_string())
             .parse()
             .context("FONT_SIZE必须是数字")?;
         

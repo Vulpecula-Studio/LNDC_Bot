@@ -134,8 +134,8 @@ impl ImageGenerator {
                     font-family: {font_family};
                     line-height: 1.8;
                     padding: {padding}px;
-                    background-color: white;
-                    color: #333;
+                    background-color: #333333;  /* 深灰色背景 */
+                    color: #ffffff;  /* 白色文字 */
                     font-size: {font_size}px;
                     width: 1024px;
                     margin: 0 auto;
@@ -144,7 +144,7 @@ impl ImageGenerator {
                     word-break: break-all;
                 }}
                 pre {{
-                    background-color: #f5f5f5;
+                    background-color: #444444;  /* 更深的灰色作为代码块背景 */
                     padding: 10px;
                     border-radius: 5px;
                     overflow-x: auto;
@@ -152,19 +152,21 @@ impl ImageGenerator {
                     word-wrap: break-word;
                     word-break: break-all;
                     font-size: {code_font_size}px;
+                    color: #e0e0e0;  /* 浅灰色代码文字 */
                 }}
                 code {{
                     font-family: 'Courier New', monospace;
-                    background-color: #f5f5f5;
+                    background-color: #444444;  /* 更深的灰色作为内联代码背景 */
                     padding: 2px 4px;
                     border-radius: 3px;
                     white-space: pre-wrap;
                     word-wrap: break-word;
+                    color: #e0e0e0;  /* 浅灰色代码文字 */
                 }}
                 blockquote {{
-                    border-left: 4px solid #ddd;
+                    border-left: 4px solid #666666;  /* 更亮的灰色边框 */
                     padding-left: 15px;
-                    color: #666;
+                    color: #cccccc;  /* 浅色引用文字 */
                     margin-left: 0;
                 }}
                 img {{
@@ -178,29 +180,30 @@ impl ImageGenerator {
                     table-layout: fixed;
                 }}
                 table, th, td {{
-                    border: 1px solid #ddd;
+                    border: 1px solid #555555;  /* 更亮的灰色边框 */
                     padding: 8px;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                 }}
                 th {{
-                    background-color: #f2f2f2;
+                    background-color: #444444;  /* 深灰色表头背景 */
                     text-align: left;
+                    color: #ffffff;  /* 白色表头文字 */
                 }}
                 h1, h2, h3, h4, h5, h6 {{
                     margin-top: 20px;
                     margin-bottom: 10px;
-                    color: #222;
+                    color: #ffffff;  /* 白色标题 */
                     line-height: 1.4;
                 }}
                 h1 {{
                     font-size: 28px;
-                    border-bottom: 1px solid #eee;
+                    border-bottom: 1px solid #555555;  /* 灰色边框 */
                     padding-bottom: 10px;
                 }}
                 h2 {{
                     font-size: 24px;
-                    border-bottom: 1px solid #eee;
+                    border-bottom: 1px solid #555555;  /* 灰色边框 */
                     padding-bottom: 8px;
                 }}
                 h3 {{
@@ -212,17 +215,20 @@ impl ImageGenerator {
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                     word-break: break-all;
+                    color: #ffffff;  /* 确保段落文字是白色 */
                 }}
                 ul, ol {{
                     margin: 15px 0;
                     padding-left: 30px;
+                    color: #ffffff;  /* 确保列表文字是白色 */
                 }}
                 li {{
                     margin-bottom: 5px;
                     word-wrap: break-word;
+                    color: #ffffff;  /* 确保列表项文字是白色 */
                 }}
                 a {{
-                    color: #0366d6;
+                    color: #66b3ff;  /* 亮蓝色链接 */
                     text-decoration: none;
                     word-break: break-all;
                 }}
@@ -232,21 +238,21 @@ impl ImageGenerator {
                 hr {{
                     border: 0;
                     height: 1px;
-                    background-color: #ddd;
+                    background-color: #555555;  /* 灰色分隔线 */
                     margin: 20px 0;
                 }}
                 /* 代码高亮样式 */
                 .hljs-keyword {{
-                    color: #a71d5d;
+                    color: #ff9580;  /* 调整为亮色以适应深色背景 */
                 }}
                 .hljs-string {{
-                    color: #183691;
+                    color: #a8e08f;  /* 调整为亮色以适应深色背景 */
                 }}
                 .hljs-number {{
-                    color: #0086b3;
+                    color: #66d9ef;  /* 调整为亮色以适应深色背景 */
                 }}
                 .hljs-comment {{
-                    color: #969896;
+                    color: #b0b0b0;  /* 调整为亮色以适应深色背景 */
                 }}
             </style>
         </head>
