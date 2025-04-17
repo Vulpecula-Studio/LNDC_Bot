@@ -10,21 +10,21 @@ use rust_discord_bot::image;
 async fn main() -> Result<()> {
     // 加载环境变量
     dotenv().ok();
-    
+
     // 初始化日志
     tracing_subscriber::fmt::init();
-    
+
     // 初始化配置
     let config = config::Config::init()?;
     println!("配置已加载");
-    
+
     // 初始化目录
     config::init_directories(&config)?;
-    
+
     // 创建图像生成器
     let image_generator = image::ImageGenerator::new(&config)?;
     println!("图像生成器已创建");
-    
+
     // 测试Markdown
     let markdown = r#"# Markdown渲染测试
 
@@ -92,19 +92,19 @@ fn main() {
 
 ~~删除线文本~~
 "#;
-    
+
     // 保存到临时目录
     let output_dir = PathBuf::from("data/pic/temp");
     std::fs::create_dir_all(&output_dir)?;
     let output_path = output_dir.join("markdown_test.png");
 
     println!("开始渲染Markdown到图片: {}", output_path.display());
-    
+
     // 渲染为图片
     let result = image_generator.create_image_from_markdown(markdown, &output_path)?;
-    
+
     println!("渲染完成! 图片保存在: {}", result.display());
     println!("请检查图片以验证Markdown渲染是否正确");
-    
+
     Ok(())
-} 
+}

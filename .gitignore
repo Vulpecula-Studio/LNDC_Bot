@@ -9,6 +9,12 @@
 /data/sessions/*/
 /data/sessions/*/*
 
+# 保留空目录结构
+!data/logs/.gitkeep
+!data/pic/temp/.gitkeep
+!data/pic/test/.gitkeep
+!data/sessions/.gitkeep
+
 # 调试文件
 **/*.rs.bk
 *.pdb

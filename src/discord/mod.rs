@@ -3,13 +3,13 @@ mod commands;
 use anyhow::Result;
 use poise::serenity_prelude as serenity;
 use poise::FrameworkBuilder;
-use tokio::time::{Duration, interval};
-use tokio::select;
 use std::sync::Arc;
-use tracing::{info, error, debug, warn};
+use tokio::select;
+use tokio::time::{interval, Duration};
+use tracing::{debug, error, info, warn};
 
-use crate::config::Config;
 use crate::api::APIClient;
+use crate::config::Config;
 
 use commands::*;
 
@@ -27,21 +27,24 @@ pub struct Data {
 pub async fn start_bot(config: &Config) -> Result<()> {
     // 初始化API客户端
     let api_client = Arc::new(APIClient::new(config.clone())?);
-    
-    info!("Discord Token 前10个字符: {}...", &config.discord_token[..10]);
+
+    info!(
+        "Discord Token 前10个字符: {}...",
+        &config.discord_token[..10]
+    );
     info!("正在初始化Discord机器人...");
-    
+
     // 创建共享数据
     let data = Data {
         config: config.clone(),
         api_client: api_client.clone(),
     };
-    
+
     // 创建框架
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![
-                qa_bot(), 
+                qa_bot(),
                 history_sessions(),
                 help_command(),
                 storage_stats(),
@@ -51,12 +54,10 @@ pub async fn start_bot(config: &Config) -> Result<()> {
                 ..Default::default()
             },
             // 设置事件处理
-            event_handler: |ctx, event, _framework, data| {
-                Box::pin(event_handler(ctx, event, data))
-            },
+            event_handler: |ctx, event, _framework, data| Box::pin(event_handler(ctx, event, data)),
             // 注册全局错误处理
             on_error: |error| Box::pin(on_error(error)),
-            
+
             // 启用命令编辑跟踪
             command_check: Some(|ctx| {
                 Box::pin(async move {
@@ -64,25 +65,30 @@ pub async fn start_bot(config: &Config) -> Result<()> {
                     Ok(true)
                 })
             }),
-            
+
             // 设置其他选项
             skip_checks_for_owners: true,
-            
+
             ..Default::default()
         })
         .token(&config.discord_token)
-        .intents(serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT)
+        .intents(
+            serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT,
+        )
         .setup(|ctx, ready, framework| {
             Box::pin(async move {
-                info!("机器人已登录: {}#{}", ready.user.name, ready.user.discriminator);
+                info!(
+                    "机器人已登录: {}#{}",
+                    ready.user.name, ready.user.discriminator
+                );
                 info!("机器人ID: {}", ready.user.id);
                 info!("所在服务器数量: {}", ready.guilds.len());
-                
+
                 // 列出所有服务器
                 for guild in &ready.guilds {
                     info!("  - 服务器 ID: {}", guild.id);
                 }
-                
+
                 // 注册全局斜线命令 - 这很重要，确保全局命令被正确注册
                 info!("正在注册全局斜线命令...");
                 match poise::builtins::register_globally(ctx, &framework.options().commands).await {
@@ -92,13 +98,13 @@ pub async fn start_bot(config: &Config) -> Result<()> {
                         error!("详细错误: {:?}", e);
                     }
                 }
-                
+
                 Ok(data)
             })
         });
 
     info!("正在启动Discord机器人...");
-    
+
     // 启动周期性清理任务和机器人
     start_with_periodic_cleanup(framework, api_client).await
 }
@@ -111,7 +117,7 @@ async fn start_with_periodic_cleanup(
     // 创建一个关闭信号通道
     let (shutdown_send, mut shutdown_recv) = tokio::sync::oneshot::channel::<()>();
     let mut shutdown_send = Some(shutdown_send);
-    
+
     // 机器人任务
     let bot_task = tokio::spawn(async move {
         info!("机器人框架开始运行");
@@ -119,13 +125,13 @@ async fn start_with_periodic_cleanup(
             Ok(_) => info!("机器人正常关闭"),
             Err(e) => error!("机器人运行时错误: {}", e),
         }
-        
+
         // 如果机器人关闭，发送关闭信号
         if let Some(sender) = shutdown_send.take() {
             let _ = sender.send(());
         }
     });
-    
+
     // 清理任务 - 每6小时运行一次
     let cleanup_task = tokio::spawn(async move {
         let mut interval = interval(Duration::from_secs(6 * 60 * 60));
@@ -143,7 +149,7 @@ async fn start_with_periodic_cleanup(
             }
         }
     });
-    
+
     // 等待任务完成
     tokio::select! {
         _ = bot_task => {
@@ -156,7 +162,7 @@ async fn start_with_periodic_cleanup(
             error!("清理任务意外结束");
         }
     }
-    
+
     Ok(())
 }
 
@@ -169,7 +175,7 @@ async fn event_handler(
     match event {
         poise::Event::Ready { data_about_bot } => {
             info!("机器人已登录: {}", data_about_bot.user.name);
-            
+
             // 获取应用命令
             match ctx.http.get_global_application_commands().await {
                 Ok(commands) => {
@@ -177,13 +183,17 @@ async fn event_handler(
                     for cmd in commands {
                         info!("全局命令: {} (ID: {})", cmd.name, cmd.id);
                     }
-                },
+                }
                 Err(e) => error!("获取全局应用命令失败: {}", e),
             }
-        },
+        }
         poise::Event::InteractionCreate { interaction } => {
-            info!("收到交互: {:?}, 类型: {:?}", interaction.id(), interaction.kind());
-            
+            info!(
+                "收到交互: {:?}, 类型: {:?}",
+                interaction.id(),
+                interaction.kind()
+            );
+
             if let Some(cmd) = interaction.as_application_command() {
                 info!("收到应用命令: {} (ID: {})", cmd.data.name, interaction.id());
                 debug!("命令数据: {:?}", cmd.data);
@@ -194,16 +204,16 @@ async fn event_handler(
             } else {
                 debug!("收到其他类型的交互");
             }
-        },
+        }
         poise::Event::GuildCreate { guild, is_new: _ } => {
             info!("加入了服务器: {} (ID: {})", guild.name, guild.id);
-        },
+        }
         poise::Event::Resume { .. } => {
             info!("会话已恢复");
-        },
+        }
         poise::Event::CacheReady { .. } => {
             info!("缓存准备就绪");
-        },
+        }
         _ => {}
     }
     Ok(())
@@ -217,7 +227,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, anyhow::Error>) {
         }
         poise::FrameworkError::Command { error, ctx, .. } => {
             error!("命令 '{}' 执行出错: {:?}", ctx.command().name, error);
-            
+
             if let Err(e) = ctx.say(format!("❌ 命令执行出错: {}", error)).await {
                 error!("发送错误消息失败: {:?}", e);
             }
@@ -236,7 +246,9 @@ async fn on_error(error: poise::FrameworkError<'_, Data, anyhow::Error>) {
                 error!("发送错误消息失败: {:?}", e);
             }
         }
-        poise::FrameworkError::ArgumentParse { error, input, ctx, .. } => {
+        poise::FrameworkError::ArgumentParse {
+            error, input, ctx, ..
+        } => {
             warn!("参数解析错误: {:?}, 输入: {:?}", error, input);
             if let Err(e) = ctx.say(format!("❌ 参数解析错误: {}", error)).await {
                 error!("发送错误消息失败: {:?}", e);
@@ -246,4 +258,4 @@ async fn on_error(error: poise::FrameworkError<'_, Data, anyhow::Error>) {
             error!("其他错误: {error:?}");
         }
     }
-} 
+}

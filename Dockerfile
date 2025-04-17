@@ -27,7 +27,7 @@ RUN mkdir src && \
 COPY . .
 
 # 构建项目
-RUN cargo build --release && \
+RUN cargo build --release --no-default-features && \
     strip target/release/rust_discord_bot
 
 # 使用更小的基础镜像
@@ -80,4 +80,4 @@ ENV RUST_LOG=info
 VOLUME ["/app/data"]
 
 # 运行应用
-CMD ["./rust_discord_bot"] 
+CMD ["./rust_discord_bot"]

@@ -49,15 +49,15 @@ fn default_token_count() -> u32 {
 }
 
 // FastGPT API请求所需的新结构体
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct FastGPTChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_chat_item_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stream: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub detail: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variables: Option<serde_json::Value>,
@@ -68,4 +68,4 @@ pub struct FastGPTChatRequest {
 pub struct FastGPTMessage {
     pub role: String,
     pub content: serde_json::Value,
-} 
+}
