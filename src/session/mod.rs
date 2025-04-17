@@ -160,7 +160,7 @@ impl SessionManager {
         let modified = fs::metadata(&session_dir)
             .ok()
             .and_then(|m| m.modified().ok())
-            .unwrap_or_else(|| SystemTime::now());
+            .unwrap_or(SystemTime::now());
 
         let datetime = DateTime::<Utc>::from(modified);
 
@@ -211,10 +211,10 @@ impl SessionManager {
                         let path = entry.path();
                         if let Some(ext) = path.extension() {
                             if let Some(ext_str) = ext.to_str() {
-                                if ext_str == "png" || ext_str == "jpg" || ext_str == "jpeg" {
-                                    if fs::remove_file(&path).is_ok() {
-                                        removed += 1;
-                                    }
+                                if (ext_str == "png" || ext_str == "jpg" || ext_str == "jpeg")
+                                    && fs::remove_file(&path).is_ok()
+                                {
+                                    removed += 1;
                                 }
                             }
                         }

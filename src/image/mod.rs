@@ -99,7 +99,7 @@ impl ImageGenerator {
         };
 
         let font_family = if !font_paths.is_empty() {
-            format!("'LXGW WenKai', 'Microsoft YaHei', 'SimHei', sans-serif")
+            "'LXGW WenKai', 'Microsoft YaHei', 'SimHei', sans-serif".to_string()
         } else {
             "sans-serif".to_string()
         };

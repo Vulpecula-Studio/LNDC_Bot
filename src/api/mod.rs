@@ -179,7 +179,7 @@ impl APIClient {
         };
 
         // 提取响应内容
-        let content = match api_response.choices.get(0) {
+        let content = match api_response.choices.first() {
             Some(choice) => choice.message.content.clone(),
             None => {
                 error!("API响应中没有选项: {:?}", api_response);
