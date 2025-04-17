@@ -131,7 +131,7 @@ impl APIClient {
                 .await;
             match send_result {
                 Ok(resp) if resp.status().is_success() => break resp,
-                Ok(mut resp) => {
+                Ok(resp) => {
                     let status = resp.status();
                     let error_text = resp.text().await.unwrap_or_default();
                     error!("API请求失败: 状态码 {}, 错误信息: {}", status, error_text);

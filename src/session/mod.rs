@@ -61,7 +61,7 @@ impl SessionManager {
             fs::write(&input_file, input).context("保存用户输入失败")
         })
         .await
-        .context("保存用户输入任务失败")?;
+        .context("保存用户输入任务失败")??;
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl SessionManager {
             fs::write(&response_file, markdown).context("保存API响应失败")
         })
         .await
-        .context("保存API响应任务失败")?;
+        .context("保存API响应任务失败")??;
         Ok(())
     }
 

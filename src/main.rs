@@ -5,7 +5,6 @@ mod image;
 mod session;
 
 use anyhow::Result;
-use dotenv::dotenv;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, EnvFilter};
 

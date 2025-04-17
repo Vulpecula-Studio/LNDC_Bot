@@ -1,7 +1,7 @@
 use anyhow::Result;
-use std::path::PathBuf;
 use rust_discord_bot::config::Config;
 use rust_discord_bot::image::ImageGenerator;
+use std::path::PathBuf;
 
 fn main() -> Result<()> {
     // 初始化配置
@@ -17,7 +17,8 @@ fn main() -> Result<()> {
     let output_path = PathBuf::from("data/pic/test/test_output.png");
     
     // 生成图片
-    let result_path = image_generator.create_image_from_markdown(&markdown_content, &output_path)?;
+    let result_path =
+        image_generator.create_image_from_markdown(&markdown_content, &output_path)?;
     
     println!("图片生成成功: {}", result_path.display());
     Ok(())
