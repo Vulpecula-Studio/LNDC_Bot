@@ -409,12 +409,6 @@ impl ImageGenerator {
             .arg("UTF-8") // 确保使用UTF-8编码
             .arg("--enable-local-file-access") // 允许访问本地文件
             .arg("--disable-javascript") // 禁用JavaScript以提高稳定性
-            .arg("--transparent") // 使用透明背景以便更好处理非矩形内容
-            .arg("--enable-smart-width") // 智能宽度调整
-            .arg("--image-dpi")
-            .arg("300") // 更高的DPI输出
-            .arg("--minimum-font-size")
-            .arg("14") // 确保最小字体可读性
             .arg(html_path.to_str().unwrap())
             .arg(output_path.to_str().unwrap())
             .output()
