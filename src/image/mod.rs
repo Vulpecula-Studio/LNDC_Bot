@@ -136,7 +136,13 @@ impl ImageGenerator {
             <style>
                 @font-face {{
                     font-family: 'LXGW WenKai';
-                    src: local('LXGW WenKai'), url('{font_path}') format('truetype');
+                    src: local('LXGW WenKai'), url('file://{font_path_for_css}') format('truetype');
+                    font-weight: normal;
+                    font-style: normal;
+                }}
+                @font-face {{
+                    font-family: 'Code Font';
+                    src: local('Consolas'), local('Source Code Pro'), local('DejaVu Sans Mono'), local('Courier New'), local('Menlo');
                     font-weight: normal;
                     font-style: normal;
                 }}
@@ -144,54 +150,67 @@ impl ImageGenerator {
                     font-family: {font_family};
                     line-height: 1.8;
                     padding: {padding}px;
-                    background-color: #333333;  /* 深灰色背景 */
-                    color: #ffffff;  /* 白色文字 */
+                    background-color: #2b2b2b;  /* 稍微暗一点的灰色背景 */
+                    color: #f0f0f0;  /* 更柔和的白色文字 */
                     font-size: {font_size}px;
                     width: 1024px;
                     margin: 0 auto;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                     word-break: break-all;
+                    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);  /* 微妙的文字阴影 */
                 }}
                 pre {{
-                    background-color: #444444;  /* 更深的灰色作为代码块背景 */
-                    padding: 10px;
-                    border-radius: 5px;
+                    font-family: 'Code Font', {font_family}, monospace;
+                    background-color: #383838;  /* 更深的灰色作为代码块背景 */
+                    padding: 16px;
+                    border-radius: 8px;
                     overflow-x: auto;
                     white-space: pre-wrap;
                     word-wrap: break-word;
                     word-break: break-all;
                     font-size: {code_font_size}px;
                     color: #e0e0e0;  /* 浅灰色代码文字 */
+                    border-left: 3px solid #666666;  /* 左侧边框 */
+                    margin: 20px 0;  /* 增加边距 */
+                    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);  /* 微妙的阴影 */
                 }}
                 code {{
-                    font-family: 'Courier New', monospace;
-                    background-color: #444444;  /* 更深的灰色作为内联代码背景 */
-                    padding: 2px 4px;
-                    border-radius: 3px;
+                    font-family: 'Code Font', {font_family}, monospace;
+                    background-color: #454545;  /* 内联代码背景 */
+                    padding: 3px 6px;
+                    border-radius: 4px;
                     white-space: pre-wrap;
                     word-wrap: break-word;
                     color: #e0e0e0;  /* 浅灰色代码文字 */
                 }}
                 blockquote {{
-                    border-left: 4px solid #666666;  /* 更亮的灰色边框 */
-                    padding-left: 15px;
-                    color: #cccccc;  /* 浅色引用文字 */
-                    margin-left: 0;
+                    border-left: 4px solid #777777;  /* 更亮的灰色边框 */
+                    padding: 10px 20px;
+                    margin: 20px 0;
+                    background-color: #323232;  /* 微妙的背景色 */
+                    border-radius: 0 8px 8px 0;  /* 右侧圆角 */
+                    color: #d0d0d0;  /* 浅色引用文字 */
                 }}
                 img {{
                     max-width: 100%;
                     height: auto;
+                    border-radius: 8px;  /* 图片圆角 */
+                    margin: 20px 0;
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);  /* 图片阴影 */
                 }}
                 table {{
                     border-collapse: collapse;
                     width: 100%;
-                    margin: 15px 0;
+                    margin: 25px 0;
                     table-layout: fixed;
+                    border-radius: 8px;
+                    overflow: hidden;  /* 确保圆角有效 */
+                    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);  /* 表格阴影 */
                 }}
                 table, th, td {{
-                    border: 1px solid #555555;  /* 更亮的灰色边框 */
-                    padding: 8px;
+                    border: 1px solid #555555;  /* 表格边框 */
+                    padding: 12px;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                 }}
@@ -199,70 +218,127 @@ impl ImageGenerator {
                     background-color: #444444;  /* 深灰色表头背景 */
                     text-align: left;
                     color: #ffffff;  /* 白色表头文字 */
+                    font-weight: bold;
+                }}
+                tr:nth-child(even) {{
+                    background-color: #333333;  /* 交替行颜色 */
                 }}
                 h1, h2, h3, h4, h5, h6 {{
-                    margin-top: 20px;
-                    margin-bottom: 10px;
+                    margin-top: 30px;
+                    margin-bottom: 15px;
                     color: #ffffff;  /* 白色标题 */
                     line-height: 1.4;
+                    font-weight: 600;
                 }}
                 h1 {{
-                    font-size: 28px;
-                    border-bottom: 1px solid #555555;  /* 灰色边框 */
+                    font-size: 32px;
+                    border-bottom: 2px solid #555555;  /* 灰色边框 */
                     padding-bottom: 10px;
+                    margin-bottom: 25px;
+                    text-align: center;  /* 居中标题 */
                 }}
                 h2 {{
-                    font-size: 24px;
+                    font-size: 28px;
                     border-bottom: 1px solid #555555;  /* 灰色边框 */
                     padding-bottom: 8px;
+                    margin-top: 40px;  /* 增加间距 */
                 }}
                 h3 {{
-                    font-size: 20px;
+                    font-size: 24px;
+                    color: #e0e0e0;  /* 稍微变淡 */
                 }}
                 p {{
-                    margin: 15px 0;
+                    margin: 18px 0;
                     text-align: justify;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
                     word-break: break-all;
-                    color: #ffffff;  /* 确保段落文字是白色 */
+                    color: #f0f0f0;  /* 确保段落文字是柔和的白色 */
+                    line-height: 1.8;
                 }}
                 ul, ol {{
-                    margin: 15px 0;
+                    margin: 18px 0;
                     padding-left: 30px;
-                    color: #ffffff;  /* 确保列表文字是白色 */
+                    color: #f0f0f0;  /* 确保列表文字颜色 */
                 }}
                 li {{
-                    margin-bottom: 5px;
+                    margin-bottom: 8px;
                     word-wrap: break-word;
-                    color: #ffffff;  /* 确保列表项文字是白色 */
+                    color: #f0f0f0;  /* 确保列表项文字颜色 */
+                    line-height: 1.6;
+                }}
+                li > ul, li > ol {{
+                    margin: 10px 0 10px 20px;  /* 嵌套列表的间距 */
                 }}
                 a {{
-                    color: #66b3ff;  /* 亮蓝色链接 */
+                    color: #78a9ff;  /* 亮蓝色链接，更柔和 */
                     text-decoration: none;
                     word-break: break-all;
+                    border-bottom: 1px dotted #78a9ff;  /* 下划线效果 */
+                    padding-bottom: 1px;
                 }}
                 a:hover {{
-                    text-decoration: underline;
+                    color: #a1c4ff;  /* 悬停色 */
+                    border-bottom: 1px solid #a1c4ff;
                 }}
                 hr {{
                     border: 0;
                     height: 1px;
-                    background-color: #555555;  /* 灰色分隔线 */
-                    margin: 20px 0;
+                    background-image: linear-gradient(to right, rgba(85, 85, 85, 0), rgba(85, 85, 85, 0.75), rgba(85, 85, 85, 0));  /* 渐变分隔线 */
+                    margin: 30px 0;
                 }}
-                /* 代码高亮样式 */
+                /* 代码高亮样式 - 更丰富的配色方案 */
                 .hljs-keyword {{
-                    color: #ff9580;  /* 调整为亮色以适应深色背景 */
+                    color: #ff9580;  /* 关键字颜色 */
+                    font-weight: bold;
                 }}
                 .hljs-string {{
-                    color: #a8e08f;  /* 调整为亮色以适应深色背景 */
+                    color: #b5e88f;  /* 字符串颜色，更鲜明 */
                 }}
                 .hljs-number {{
-                    color: #66d9ef;  /* 调整为亮色以适应深色背景 */
+                    color: #79d4f3;  /* 数字颜色，更柔和 */
                 }}
                 .hljs-comment {{
-                    color: #b0b0b0;  /* 调整为亮色以适应深色背景 */
+                    color: #b0b0b0;  /* 注释颜色 */
+                    font-style: italic;
+                }}
+                .hljs-function {{
+                    color: #d9a9ff;  /* 函数名颜色 */
+                }}
+                .hljs-parameter {{
+                    color: #ffcc66;  /* 参数颜色 */
+                }}
+                .hljs-tag {{
+                    color: #ff8080;  /* 标签颜色 */
+                }}
+                .hljs-attr {{
+                    color: #8cdaff;  /* 属性颜色 */
+                }}
+                /* 任务列表样式 */
+                ul.task-list {{
+                    list-style-type: none;
+                    padding-left: 20px;
+                }}
+                .task-list-item {{
+                    position: relative;
+                    padding-left: 25px;
+                }}
+                .task-list-item input {{
+                    position: absolute;
+                    left: 0;
+                    top: 3px;
+                }}
+                /* 脚注样式 */
+                .footnote {{
+                    font-size: 0.9em;
+                    color: #cccccc;
+                    margin-top: 40px;
+                    padding-top: 10px;
+                    border-top: 1px dotted #555555;
+                }}
+                .footnote-ref {{
+                    vertical-align: super;
+                    font-size: 0.8em;
                 }}
             </style>
         </head>
@@ -272,7 +348,7 @@ impl ImageGenerator {
             padding = self.config.padding,
             font_size = self.config.font_size,
             code_font_size = self.config.font_size - 2,
-            font_path = font_path_for_css
+            font_path_for_css = font_path_for_css
         );
 
         // 使用pulldown-cmark解析Markdown
@@ -333,6 +409,12 @@ impl ImageGenerator {
             .arg("UTF-8") // 确保使用UTF-8编码
             .arg("--enable-local-file-access") // 允许访问本地文件
             .arg("--disable-javascript") // 禁用JavaScript以提高稳定性
+            .arg("--transparent") // 使用透明背景以便更好处理非矩形内容
+            .arg("--enable-smart-width") // 智能宽度调整
+            .arg("--image-dpi")
+            .arg("300") // 更高的DPI输出
+            .arg("--minimum-font-size")
+            .arg("14") // 确保最小字体可读性
             .arg(html_path.to_str().unwrap())
             .arg(output_path.to_str().unwrap())
             .output()
