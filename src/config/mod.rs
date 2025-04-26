@@ -39,6 +39,9 @@ pub struct Config {
 
 impl Config {
     pub fn init() -> Result<Self> {
+        // 加载 .env 文件
+        dotenv::dotenv().ok();
+
         // 环境变量加载由 main.rs 统一进行
 
         // 获取应用根目录
