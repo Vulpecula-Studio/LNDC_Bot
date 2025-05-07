@@ -30,6 +30,8 @@ pub async fn qa_bot(
 ) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
+    // 发送初始确认消息
+    ctx.send(|reply| reply.content("✅ 请求已接收，正在等待fastgpt响应... ")).await?;
 
     // 获取用户ID
     let user_id = ctx.author().id.to_string();
@@ -66,37 +68,20 @@ pub async fn qa_bot(
         .await
     {
         Ok(response) => {
-            // 构建回复
+            // 构建回复（仅发送图片）
             let image_path = response.image_path;
-            let session_id = response.session_id;
-
             // 检查文件是否存在
             if !image_path.exists() {
                 ctx.say("❌ 生成图片失败：文件不存在。").await?;
                 return Ok(());
             }
-
-            // 创建嵌入消息
-            let mut embed = CreateEmbed::default();
-            embed
-                .title("🤖 AI回答")
-                .description(format!("会话ID: `{}`", short_session_id(&session_id)))
-                .color(0x3498db)
-                .footer(|f| f.text(format!("提问者: {}", ctx.author().name)))
-                .timestamp(Utc::now());
-
-            // 发送嵌入消息和图片
+            // 仅发送图片
             ctx.send(|reply| {
-                reply
-                    .attachment(serenity::AttachmentType::Path(&image_path))
-                    .embed(|e| {
-                        *e = embed.clone();
-                        e
-                    })
+                reply.attachment(serenity::AttachmentType::Path(&image_path))
             })
             .await?;
 
-            info!("成功回答问题，会话ID: {}", session_id);
+            info!("成功回答问题，会话ID: {}", response.session_id);
         }
         Err(e) => {
             error!("处理问题时出错: {}", e);
