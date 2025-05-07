@@ -29,8 +29,15 @@ pub async fn qa_bot(
 ) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
-    // 发送初始确认消息
-    ctx.send(|reply| reply.content("✅ 请求已接收，正在等待fastgpt响应... "))
+    // 发送嵌入式初始确认消息
+    let initial_msg = ctx
+        .send(|reply| {
+            reply.embed(|e| {
+                e.title("✅ 请求已接收")
+                    .description("正在等待fastgpt响应...")
+                    .color(0x3498db)
+            })
+        })
         .await?;
 
     // 获取用户ID
@@ -75,7 +82,9 @@ pub async fn qa_bot(
                 ctx.say("❌ 生成图片失败：文件不存在。").await?;
                 return Ok(());
             }
-            // 仅发送图片
+            // 删除初始确认消息
+            initial_msg.delete(ctx).await?;
+            // 发送最终图片，仅作为附件
             ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
                 .await?;
 
