@@ -2,7 +2,9 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
 use std::fmt::Write;
-use tracing::{error, info};
+use std::fs;
+use tracing::info;
+use uuid::Uuid;
 
 use super::Context;
 
@@ -67,34 +69,88 @@ pub async fn qa_bot(
         info!("共收集到{}张图片", api_image_urls.len());
     }
 
-    // 调用API获取图片回答
+    // 调用FastGPT获取对话响应并收集状态事件
     let api_client = &ctx.data().api_client;
-
-    match api_client
-        .get_response_as_image(&问题, &user_id, api_image_urls.as_slice().into())
-        .await
-    {
-        Ok(response) => {
-            // 构建回复（仅发送图片）
-            let image_path = response.image_path;
-            // 检查文件是否存在
-            if !image_path.exists() {
-                ctx.say("❌ 生成图片失败：文件不存在。").await?;
-                return Ok(());
+    let chat_resp = api_client
+        .get_chat_response(&问题, api_image_urls.as_slice().into())
+        .await?;
+    // 动态更新运行状态，根据流式事件中的 flowNodeStatus
+    let mut status_lines: Vec<String> = Vec::new();
+    for (evt, data) in &chat_resp.events {
+        if evt == "flowNodeStatus" {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
+                if val.get("status").and_then(|s| s.as_str()) == Some("running") {
+                    if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
+                        status_lines.push(name.to_string());
+                        initial_msg
+                            .edit(ctx, |m| {
+                                m.embed(|e| {
+                                    e.title("运行状态")
+                                        .description(status_lines.join("\n"))
+                                        .color(0x3498db)
+                                })
+                            })
+                            .await?;
+                    }
+                }
             }
-            // 删除初始确认消息
-            initial_msg.delete(ctx).await?;
-            // 发送最终图片，仅作为附件
-            ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
-                .await?;
-
-            info!("成功回答问题，会话ID: {}", response.session_id);
-        }
-        Err(e) => {
-            error!("处理问题时出错: {}", e);
-            ctx.say(format!("❌ 请求处理失败: {}", e)).await?;
         }
     }
+    // 最后添加完整响应状态
+    status_lines.push("接收到fastgpt完整响应！".to_string());
+    initial_msg
+        .edit(ctx, |m| {
+            m.embed(|e| {
+                e.title("运行状态")
+                    .description(status_lines.join("\n"))
+                    .color(0x2ecc71)
+            })
+        })
+        .await?;
+    // 保存响应markdown并生成图片
+    let session_id = api_client.session_manager.create_session(&user_id);
+    api_client
+        .session_manager
+        .save_user_input(&session_id, &问题)
+        .await?;
+    api_client
+        .session_manager
+        .save_response_markdown(&session_id, &chat_resp.content)
+        .await?;
+    // 更新状态：图片生成中
+    initial_msg
+        .edit(ctx, |m| {
+            m.embed(|e| {
+                e.title("运行状态")
+                    .description([status_lines.join("\n"), "图片生成中...".to_string()].join("\n"))
+                    .color(0xf1c40f)
+            })
+        })
+        .await?;
+    // 生成图片并发送
+    let image_resp = api_client.image_generator.create_image_from_markdown(
+        &chat_resp.content,
+        &api_client
+            .config
+            .image_output_dir
+            .join("temp")
+            .join(format!("response_{}.png", Uuid::new_v4())),
+    )?;
+    // 更新状态：图片生成完成
+    initial_msg
+        .edit(ctx, |m| {
+            m.embed(|e| {
+                e.title("运行状态")
+                    .description([status_lines.join("\n"), "图片生成完成！".to_string()].join("\n"))
+                    .color(0x9b59b6)
+            })
+        })
+        .await?;
+    // 删除临时文件并发送最终图片
+    let _ = fs::remove_file(&image_resp);
+    initial_msg.delete(ctx).await?;
+    ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_resp)))
+        .await?;
 
     Ok(())
 }

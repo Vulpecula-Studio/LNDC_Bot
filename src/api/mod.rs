@@ -20,9 +20,9 @@ pub use self::models::*;
 #[derive(Debug)]
 pub struct APIClient {
     client: Client,
-    config: Config,
+    pub config: Config,
     pub session_manager: SessionManager,
-    image_generator: ImageGenerator,
+    pub image_generator: ImageGenerator,
     semaphore: Arc<Semaphore>,
 }
 
@@ -103,9 +103,9 @@ impl APIClient {
                 "uid": format!("user_{}", Uuid::new_v4()),
                 "name": "DiscordUser"
             })),
-            messages: vec![message],
-            stream: false, // 明确设置为false，与默认值一致
-            detail: false, // 明确设置为false，与默认值一致
+            messages: vec![message], // 添加消息字段
+            stream: true,            // 启用流式传输
+            detail: true,            // 包含详细信息
         };
 
         info!("发送FastGPT请求，提示词长度: {}", prompt.len());
@@ -118,7 +118,7 @@ impl APIClient {
             }
         }
 
-        // 发送请求，重试逻辑
+        // 发送请求并流式读取SSE事件，重试逻辑保持不变
         let max_retries = 3;
         let mut attempts = 0;
         let response = loop {
@@ -155,47 +155,71 @@ impl APIClient {
             sleep(backoff).await;
         };
 
-        // 检查响应状态已经在重试中保证是成功的
-
-        // 获取原始响应文本以便日志记录
-        let response_text = response.text().await.context("读取API响应文本失败")?;
-        info!("收到FastGPT响应，长度: {} 字节", response_text.len());
-        debug!(
-            "FastGPT响应内容: {}",
-            if response_text.len() > 200 {
-                format!("{}...(已截断)", safe_truncate(&response_text, 200))
-            } else {
-                response_text.clone()
+        // 解析流式SSE事件
+        use futures::StreamExt;
+        let mut events = Vec::new();
+        let mut answer = String::new();
+        let mut current_event = String::new();
+        let mut byte_stream = response.bytes_stream();
+        let mut done = false;
+        while let Some(item) = byte_stream.next().await {
+            let chunk = item.context("读取流式数据失败")?;
+            let text = String::from_utf8_lossy(&chunk);
+            for line in text.lines() {
+                if let Some(evt) = line.strip_prefix("event: ") {
+                    current_event = evt.to_string();
+                    info!("SSE 事件: {}", &current_event);
+                } else if let Some(data) = line.strip_prefix("data: ") {
+                    events.push((current_event.clone(), data.to_string()));
+                    // 如果收到 fastAnswer，作为最终完整回答并退出
+                    if current_event == "fastAnswer" {
+                        // 尝试解析完整快速回答内容
+                        if let Ok(full) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Some(content) = full.get("content").and_then(|c| c.as_str()) {
+                                answer = content.to_string();
+                                info!("收到快速回答: {}", content);
+                            }
+                        }
+                        done = true;
+                        break;
+                    }
+                    if current_event == "answer" {
+                        if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
+                            {
+                                answer.push_str(delta);
+                                info!("收到答案增量: {}", delta);
+                            }
+                        }
+                    }
+                }
             }
-        );
-
-        // 尝试解析响应
-        let api_response: ChatCompletionResponse = match serde_json::from_str(&response_text) {
-            Ok(res) => res,
-            Err(e) => {
-                error!("解析API响应JSON失败: {}, 原始响应: {}", e, &response_text);
-                return Err(anyhow!("解析API响应失败: {}", e));
+            if done {
+                break;
             }
-        };
-
-        // 提取响应内容
-        let content = match api_response.choices.first() {
-            Some(choice) => choice.message.content.clone(),
-            None => {
-                error!("API响应中没有选项: {:?}", api_response);
-                return Err(anyhow!("API响应中没有选项"));
-            }
-        };
+        }
+        info!("流式传输结束，最终回答: {}", safe_truncate(&answer, 200));
+        let content = answer;
 
         info!("成功解析API响应，内容长度: {} 字符", content.len());
 
         Ok(ChatResponse {
             content,
-            raw_response: api_response,
+            raw_response: ChatCompletionResponse {
+                // 补全默认字段
+                id: "".to_string(),
+                object: "".to_string(),
+                created: 0,
+                model: "".to_string(),
+                choices: vec![],
+                usage: Default::default(), // 添加默认 usage
+            },
+            events,
         })
     }
 
     /// 获取响应并生成图片
+    #[allow(dead_code)]
     pub async fn get_response_as_image(
         &self,
         prompt: &str,
@@ -261,8 +285,11 @@ pub struct ChatResponse {
     pub content: String,
     #[allow(dead_code)]
     pub raw_response: ChatCompletionResponse,
+    /// 流式事件 (event, data)
+    pub events: Vec<(String, String)>,
 }
 
+#[allow(dead_code)]
 pub struct ImageResponse {
     pub image_path: PathBuf,
     pub session_id: String,
