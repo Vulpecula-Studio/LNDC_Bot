@@ -31,7 +31,8 @@ pub async fn qa_bot(
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
     // 发送初始确认消息
-    ctx.send(|reply| reply.content("✅ 请求已接收，正在等待fastgpt响应... ")).await?;
+    ctx.send(|reply| reply.content("✅ 请求已接收，正在等待fastgpt响应... "))
+        .await?;
 
     // 获取用户ID
     let user_id = ctx.author().id.to_string();
@@ -76,10 +77,8 @@ pub async fn qa_bot(
                 return Ok(());
             }
             // 仅发送图片
-            ctx.send(|reply| {
-                reply.attachment(serenity::AttachmentType::Path(&image_path))
-            })
-            .await?;
+            ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
+                .await?;
 
             info!("成功回答问题，会话ID: {}", response.session_id);
         }
