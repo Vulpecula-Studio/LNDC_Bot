@@ -28,23 +28,22 @@ impl SessionManager {
     }
 
     /// 创建新的会话
-    pub fn create_session(&self, user_id: &str) -> String {
+    pub fn create_session(&self, user_id: &str) -> Result<String> {
         // 生成会话ID
         let session_id = Uuid::new_v4().to_string();
 
         // 创建会话目录
         let session_dir = self.get_session_dir(&session_id);
-        if let Err(e) = fs::create_dir_all(&session_dir) {
-            error!("创建会话目录失败: {}", e);
-        }
+        fs::create_dir_all(&session_dir).context("创建会话目录失败")?; // Propagate error
 
         // 保存用户ID
         let user_info_path = session_dir.join("user_id.txt");
         if let Err(e) = fs::write(&user_info_path, user_id) {
+            // Log error, but don't necessarily fail the session creation for this
             error!("保存用户ID失败: {}", e);
         }
 
-        session_id
+        Ok(session_id)
     }
 
     /// 获取会话目录
@@ -57,6 +56,8 @@ impl SessionManager {
         let session_dir = self.get_session_dir(session_id);
         let input = input.to_string();
         tokio::task::spawn_blocking(move || {
+            // Ensure session directory exists
+            fs::create_dir_all(&session_dir).context("创建会话目录失败")?;
             let input_file = session_dir.join("input.txt");
             fs::write(&input_file, input).context("保存用户输入失败")
         })
@@ -70,6 +71,8 @@ impl SessionManager {
         let session_dir = self.get_session_dir(session_id);
         let markdown = markdown.to_string();
         tokio::task::spawn_blocking(move || {
+            // Ensure session directory exists
+            fs::create_dir_all(&session_dir).context("创建会话目录失败")?;
             let response_file = session_dir.join("response.md");
             fs::write(&response_file, markdown).context("保存API响应失败")
         })
@@ -87,6 +90,13 @@ impl SessionManager {
         let session_dir = self.get_session_dir(session_id);
         let original = original_image_path.to_path_buf();
         tokio::task::spawn_blocking(move || -> Result<PathBuf> {
+            // Ensure session directory exists
+            fs::create_dir_all(&session_dir).context("创建会话目录失败")?;
+            // 验证目录是否已创建，并记录日志
+            if !session_dir.exists() {
+                return Err(anyhow::anyhow!("会话目录未创建: {}", session_dir.display()));
+            }
+            info!("已确认会话目录存在: {}", session_dir.display());
             // 生成时间戳
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)

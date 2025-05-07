@@ -79,6 +79,7 @@ pub async fn qa_bot(
             {"type": "text", "text": 问题}
         ]),
     }];
+    // 动态更新运行状态，根据流式事件中的 flowNodeStatus
     let chat_resp = api_client
         .get_chat_response(
             None, // 不传 chat_id
@@ -88,7 +89,6 @@ pub async fn qa_bot(
             None, // 不传变量
         )
         .await?;
-    // 动态更新运行状态，根据流式事件中的 flowNodeStatus
     let mut status_lines: Vec<String> = Vec::new();
     for (evt, data) in &chat_resp.events {
         if evt == "flowNodeStatus" {

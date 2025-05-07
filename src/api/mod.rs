@@ -212,7 +212,7 @@ impl APIClient {
         _image_urls: Option<&[String]>,
     ) -> Result<ImageResponse> {
         // 创建会话
-        let session_id = self.session_manager.create_session(user_id);
+        let session_id = self.session_manager.create_session(user_id)?;
 
         // 保存用户输入
         self.session_manager
