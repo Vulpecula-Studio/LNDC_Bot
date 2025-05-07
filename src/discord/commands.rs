@@ -83,7 +83,6 @@ pub async fn qa_bot(
         ]),
     }];
     let status_lines = Arc::new(Mutex::new(Vec::new()));
-    let step_count = Arc::new(Mutex::new(0));
     let chat_resp = api_client
         .get_chat_response(
             None, // 不传 chat_id
@@ -95,39 +94,35 @@ pub async fn qa_bot(
             {
                 // 为回调克隆共享状态、上下文和初始消息
                 let status_lines = Arc::clone(&status_lines);
-                let step_count = Arc::clone(&step_count);
-                let initial_msg = initial_msg.clone();
                 let ctx = ctx.clone();
+                let initial_msg = initial_msg.clone();
                 move |evt, data| {
                     let status_lines = Arc::clone(&status_lines);
-                    let step_count = Arc::clone(&step_count);
-                    let initial_msg = initial_msg.clone();
                     let ctx = ctx.clone();
                     let evt = evt.to_string();
                     let data = data.to_string();
+                    // 克隆一次 message handle 供异步块使用，避免捕获 initial_msg 并移动
+                    let msg = initial_msg.clone();
                     async move {
                         if evt == "flowNodeStatus" {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
                                 if val.get("status").and_then(|s| s.as_str()) == Some("running") {
                                     if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                                        // 更新步骤计数和状态行，并构建描述
+                                        // 将名称加入历史并生成描述后立即释放锁
                                         let description = {
-                                            let mut cnt = step_count.lock().unwrap();
-                                            *cnt += 1;
                                             let mut lines = status_lines.lock().unwrap();
-                                            lines.push(format!("步骤 {}: {}", *cnt, name));
+                                            lines.push(name.to_string());
                                             lines.join("\n")
                                         };
-                                        // 实时编辑嵌入消息
-                                        initial_msg
-                                            .edit(ctx.clone(), |m| {
-                                                m.embed(|e| {
-                                                    e.title("运行状态")
-                                                        .description(description.clone())
-                                                        .color(0x3498db)
-                                                })
+                                        // 实时编辑嵌入消息，使用 msg 句柄
+                                        msg.edit(ctx.clone(), |m| {
+                                            m.embed(|e| {
+                                                e.title("运行状态")
+                                                    .description(description.clone())
+                                                    .color(0x3498db)
                                             })
-                                            .await?;
+                                        })
+                                        .await?;
                                     }
                                 }
                             }
