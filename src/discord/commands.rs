@@ -1,7 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
-use serenity::builder::CreateEmbed;
 use std::fmt::Write;
 use tracing::{error, info};
 
