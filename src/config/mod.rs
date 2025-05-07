@@ -94,11 +94,11 @@ impl Config {
             .map(String::from)
             .collect();
 
-        // 会话配置
+        // 会话配置（以天为单位）
         let session_expiry = env::var("SESSION_EXPIRY")
-            .unwrap_or_else(|_| "3600".to_string())
+            .unwrap_or_else(|_| "2".to_string())
             .parse()
-            .context("SESSION_EXPIRY必须是数字")?;
+            .context("SESSION_EXPIRY必须是数字（表示天数）")?;
 
         // API 并发请求限制，默认 5
         let api_concurrency_limit = env::var("FASTGPT_CONCURRENCY_LIMIT")

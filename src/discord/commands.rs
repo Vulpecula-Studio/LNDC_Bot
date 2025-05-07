@@ -2,7 +2,6 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
 use std::fmt::Write;
-use std::fs;
 use tracing::info;
 use uuid::Uuid;
 
@@ -46,6 +45,10 @@ pub async fn qa_bot(
 
     // 获取用户ID
     let user_id = ctx.author().id.to_string();
+    // 获取 API 客户端
+    let api_client = &ctx.data().api_client;
+    // 创建新的会话并获取 session_id
+    let session_id = api_client.session_manager.create_session(&user_id)?;
 
     // 记录命令使用
     info!(
@@ -72,7 +75,6 @@ pub async fn qa_bot(
     }
 
     // 调用FastGPT获取对话响应，仅使用 messages，开启 stream 和 detail
-    let api_client = &ctx.data().api_client;
     let messages = vec![FastGPTMessage {
         role: "user".into(),
         content: json!([
@@ -121,14 +123,20 @@ pub async fn qa_bot(
             })
         })
         .await?;
-    // 保存响应markdown并生成图片
+    // 保存用户输入和响应markdown到会话目录
     api_client
         .session_manager
-        .save_user_input(&user_id, &问题)
+        .save_user_input(&session_id, &问题)
         .await?;
     api_client
         .session_manager
-        .save_response_markdown(&user_id, &chat_resp.content)
+        .save_response_markdown(&session_id, &chat_resp.content)
+        .await?;
+    // 保存用户提供的图片链接到会话目录
+    let image_urls = api_image_urls.clone();
+    api_client
+        .session_manager
+        .save_user_images(&session_id, &image_urls)
         .await?;
     // 更新状态：图片生成中
     initial_msg
@@ -140,15 +148,12 @@ pub async fn qa_bot(
             })
         })
         .await?;
-    // 生成图片并发送
-    let image_resp = api_client.image_generator.create_image_from_markdown(
-        &chat_resp.content,
-        &api_client
-            .config
-            .image_output_dir
-            .join("temp")
-            .join(format!("response_{}.png", Uuid::new_v4())),
-    )?;
+    // 在会话目录生成图片并发送
+    let session_dir = api_client.session_manager.get_session_dir(&session_id);
+    let image_path = session_dir.join(format!("response_{}.png", Uuid::new_v4()));
+    api_client
+        .image_generator
+        .create_image_from_markdown(&chat_resp.content, &image_path)?;
     // 更新状态：图片生成完成
     initial_msg
         .edit(ctx, |m| {
@@ -159,10 +164,8 @@ pub async fn qa_bot(
             })
         })
         .await?;
-    // 删除临时文件并发送最终图片
-    let _ = fs::remove_file(&image_resp);
     initial_msg.delete(ctx).await?;
-    ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_resp)))
+    ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
         .await?;
 
     Ok(())

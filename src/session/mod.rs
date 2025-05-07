@@ -81,6 +81,22 @@ impl SessionManager {
         Ok(())
     }
 
+    /// 保存用户提供的图片链接到会话
+    pub async fn save_user_images(&self, session_id: &str, images: &[String]) -> Result<()> {
+        let session_dir = self.get_session_dir(session_id);
+        let data = images.join("\n");
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            // 确保会话目录存在
+            fs::create_dir_all(&session_dir).context("创建会话目录失败")?;
+            let file = session_dir.join("image_urls.txt");
+            fs::write(&file, data).context("保存用户图片URL失败")?;
+            Ok(())
+        })
+        .await
+        .context("保存用户图片URL任务失败")??;
+        Ok(())
+    }
+
     /// 保存响应图片到会话
     pub async fn save_response_image(
         &self,
