@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Duration};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -169,7 +169,7 @@ impl APIClient {
                             if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
                             {
                                 answer.push_str(delta);
-                                info!("收到 fastAnswer 增量: {}", delta);
+                                debug!("收到 fastAnswer 增量: {}", delta);
                             }
                         }
                         done = true;
@@ -180,7 +180,7 @@ impl APIClient {
                             if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
                             {
                                 answer.push_str(delta);
-                                info!("收到答案增量: {}", delta);
+                                debug!("收到答案增量: {}", delta);
                             }
                         }
                     }

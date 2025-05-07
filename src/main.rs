@@ -6,13 +6,17 @@ mod session;
 
 use anyhow::Result;
 use tracing::{error, info};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 初始化日志系统，支持环境变量RUST_LOG设置日志级别
+    // 初始化日志系统，支持环境变量RUST_LOG设置日志级别；默认INFO级
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
     fmt::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(env_filter)
         .with_target(true) // 显示目标模块
         .with_thread_ids(true) // 显示线程ID
         .with_thread_names(true) // 显示线程名称
