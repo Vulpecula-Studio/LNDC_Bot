@@ -82,7 +82,7 @@ pub async fn qa_bot(
             {"type": "text", "text": 问题}
         ]),
     }];
-    let status_lines = Arc::new(Mutex::new(Vec::new()));
+    let status_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let chat_resp = api_client
         .get_chat_response(
             None, // 不传 chat_id
@@ -108,10 +108,20 @@ pub async fn qa_bot(
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
                                 if val.get("status").and_then(|s| s.as_str()) == Some("running") {
                                     if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                                        // 将名称加入历史并生成描述后立即释放锁
+                                        // 更新历史：将前一个节点标记为完成，并为当前节点添加运行状态
                                         let description = {
                                             let mut lines = status_lines.lock().unwrap();
-                                            lines.push(name.to_string());
+                                            // 如果已有上一行且是运行状态，则标记为完成
+                                            if !lines.is_empty() {
+                                                let last_index = lines.len() - 1;
+                                                if lines[last_index].ends_with(" 🔄") {
+                                                    let trimmed =
+                                                        lines[last_index].trim_end_matches(" 🔄");
+                                                    lines[last_index] = format!("{} ✅", trimmed);
+                                                }
+                                            }
+                                            // 添加当前运行状态
+                                            lines.push(format!("{} 🔄", name));
                                             lines.join("\n")
                                         };
                                         // 实时编辑嵌入消息，使用 msg 句柄
