@@ -61,7 +61,7 @@ impl APIClient {
     }
 
     /// 从FastGPT获取响应
-    pub async fn get_chat_response(
+    pub async fn get_chat_response<Fut>(
         &self,
         // 可选的对话 ID，不传则不使用上下文
         chat_id: Option<String>,
@@ -75,7 +75,12 @@ impl APIClient {
         detail: bool,
         // 可选的模块变量
         variables: Option<serde_json::Value>,
-    ) -> Result<ChatResponse> {
+        // 可选的事件回调
+        mut on_event: impl FnMut(&str, &str) -> Fut + Send,
+    ) -> Result<ChatResponse>
+    where
+        Fut: std::future::Future<Output = Result<()>> + Send,
+    {
         // 并发请求限流
         let _permit = self
             .semaphore
@@ -155,6 +160,8 @@ impl APIClient {
                     info!("SSE 事件: {}", &current_event);
                 } else if let Some(data) = line.strip_prefix("data: ") {
                     events.push((current_event.clone(), data.to_string()));
+                    // 实时回调事件
+                    on_event(&current_event, data).await?;
                     // 如果收到 fastAnswer，处理其内容并结束流式传输
                     if current_event == "fastAnswer" {
                         // 处理 fastAnswer 事件内容
@@ -225,7 +232,15 @@ impl APIClient {
             content: json!([{"type": "text", "text": prompt}]),
         }];
         let chat_response = self
-            .get_chat_response(Some(session_id.clone()), None, messages, false, false, None)
+            .get_chat_response(
+                Some(session_id.clone()),
+                None,
+                messages,
+                false,
+                false,
+                None,
+                |_, _| async { Ok(()) },
+            )
             .await?;
 
         // 保存响应内容
@@ -277,6 +292,7 @@ pub struct ChatResponse {
     #[allow(dead_code)]
     pub raw_response: ChatCompletionResponse,
     /// 流式事件 (event, data)
+    #[allow(dead_code)]
     pub events: Vec<(String, String)>,
 }
 

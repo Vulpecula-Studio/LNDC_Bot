@@ -15,8 +15,6 @@ json_body=$(cat <<EOF
 {
   "stream": true,
   "detail": true,
-  "chatId": "${body[chatId]}",
-  "responseChatItemId": "${body[responseChatItemId]}",
   "messages": [{"role": "user", "content": "请流式回复一句：测试流式成功"}]
 }
 EOF

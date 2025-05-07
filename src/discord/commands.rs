@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
 use std::fmt::Write;
+use std::sync::{Arc, Mutex};
 use tracing::info;
 use uuid::Uuid;
 
@@ -74,62 +75,82 @@ pub async fn qa_bot(
         info!("共收集到{}张图片", api_image_urls.len());
     }
 
-    // 调用FastGPT获取对话响应，仅使用 messages，开启 stream 和 detail
+    // 调用FastGPT获取对话响应，仅使用 messages，开启 stream 和 detail，并实时处理 flowNodeStatus 事件
     let messages = vec![FastGPTMessage {
         role: "user".into(),
         content: json!([
             {"type": "text", "text": 问题}
         ]),
     }];
-    // 动态更新运行状态，根据流式事件中的 flowNodeStatus
+    let status_lines = Arc::new(Mutex::new(Vec::new()));
+    let step_count = Arc::new(Mutex::new(0));
     let chat_resp = api_client
         .get_chat_response(
             None, // 不传 chat_id
             None, // 不传 response_chat_item_id
-            messages, true, // stream 模式
+            messages,
+            true, // stream 模式
             true, // detail 模式
             None, // 不传变量
-        )
-        .await?;
-    let mut status_lines: Vec<String> = Vec::new();
-    let mut step_count = 0;
-    for (evt, data) in &chat_resp.events {
-        if evt == "flowNodeStatus" {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                if val.get("status").and_then(|s| s.as_str()) == Some("running") {
-                    if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                        step_count += 1;
-                        status_lines.push(format!("步骤 {}: {}", step_count, name));
-                        initial_msg
-                            .edit(ctx, |m| {
-                                m.embed(|e| {
-                                    e.title("运行状态")
-                                        .description(status_lines.join("\n"))
-                                        .color(0x3498db)
-                                })
-                            })
-                            .await?;
+            {
+                // 为回调克隆共享状态、上下文和初始消息
+                let status_lines = Arc::clone(&status_lines);
+                let step_count = Arc::clone(&step_count);
+                let initial_msg = initial_msg.clone();
+                let ctx = ctx.clone();
+                move |evt, data| {
+                    let status_lines = Arc::clone(&status_lines);
+                    let step_count = Arc::clone(&step_count);
+                    let initial_msg = initial_msg.clone();
+                    let ctx = ctx.clone();
+                    let evt = evt.to_string();
+                    let data = data.to_string();
+                    async move {
+                        if evt == "flowNodeStatus" {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
+                                if val.get("status").and_then(|s| s.as_str()) == Some("running") {
+                                    if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
+                                        // 更新步骤计数和状态行，并构建描述
+                                        let description = {
+                                            let mut cnt = step_count.lock().unwrap();
+                                            *cnt += 1;
+                                            let mut lines = status_lines.lock().unwrap();
+                                            lines.push(format!("步骤 {}: {}", *cnt, name));
+                                            lines.join("\n")
+                                        };
+                                        // 实时编辑嵌入消息
+                                        initial_msg
+                                            .edit(ctx.clone(), |m| {
+                                                m.embed(|e| {
+                                                    e.title("运行状态")
+                                                        .description(description.clone())
+                                                        .color(0x3498db)
+                                                })
+                                            })
+                                            .await?;
+                                    }
+                                }
+                            }
+                        }
+                        Ok(())
                     }
                 }
-            }
-        }
-    }
-    // 最后添加完整响应状态
-    initial_msg
-        .edit(ctx, |m| {
-            m.embed(|e| {
-                e.title("运行状态")
-                    .description(
-                        [
-                            status_lines.join("\n"),
-                            "✅ 接收到fastgpt完整响应！".to_string(),
-                        ]
-                        .join("\n"),
-                    )
-                    .color(0x2ecc71)
-            })
-        })
+            },
+        )
         .await?;
+    // 最后添加完整响应状态
+    {
+        let history = status_lines.lock().unwrap().join("\n");
+        initial_msg
+            .edit(ctx, |m| {
+                m.embed(|e| {
+                    e.title("运行状态")
+                        .description([history, "✅ 接收到fastgpt完整响应！".to_string()].join("\n"))
+                        .color(0x2ecc71)
+                })
+            })
+            .await?;
+    }
     // 保存用户输入和响应markdown到会话目录
     api_client
         .session_manager
@@ -146,15 +167,18 @@ pub async fn qa_bot(
         .save_user_images(&session_id, &image_urls)
         .await?;
     // 更新状态：图片生成中
-    initial_msg
-        .edit(ctx, |m| {
-            m.embed(|e| {
-                e.title("运行状态")
-                    .description([status_lines.join("\n"), "图片生成中...".to_string()].join("\n"))
-                    .color(0xf1c40f)
+    {
+        let history = status_lines.lock().unwrap().join("\n");
+        initial_msg
+            .edit(ctx, |m| {
+                m.embed(|e| {
+                    e.title("运行状态")
+                        .description([history, "图片生成中...".to_string()].join("\n"))
+                        .color(0xf1c40f)
+                })
             })
-        })
-        .await?;
+            .await?;
+    }
     // 在会话目录生成图片并发送
     let session_dir = api_client.session_manager.get_session_dir(&session_id);
     let image_path = session_dir.join(format!("response_{}.png", Uuid::new_v4()));
@@ -162,15 +186,18 @@ pub async fn qa_bot(
         .image_generator
         .create_image_from_markdown(&chat_resp.content, &image_path)?;
     // 更新状态：图片生成完成
-    initial_msg
-        .edit(ctx, |m| {
-            m.embed(|e| {
-                e.title("运行状态")
-                    .description([status_lines.join("\n"), "图片生成完成！".to_string()].join("\n"))
-                    .color(0x9b59b6)
+    {
+        let history = status_lines.lock().unwrap().join("\n");
+        initial_msg
+            .edit(ctx, |m| {
+                m.embed(|e| {
+                    e.title("运行状态")
+                        .description([history, "图片生成完成！".to_string()].join("\n"))
+                        .color(0x9b59b6)
+                })
             })
-        })
-        .await?;
+            .await?;
+    }
     initial_msg.delete(ctx).await?;
     ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
         .await?;
