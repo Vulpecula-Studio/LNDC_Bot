@@ -92,12 +92,14 @@ pub async fn qa_bot(
         )
         .await?;
     let mut status_lines: Vec<String> = Vec::new();
+    let mut step_count = 0;
     for (evt, data) in &chat_resp.events {
         if evt == "flowNodeStatus" {
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
                 if val.get("status").and_then(|s| s.as_str()) == Some("running") {
                     if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                        status_lines.push(name.to_string());
+                        step_count += 1;
+                        status_lines.push(format!("步骤 {}: {}", step_count, name));
                         initial_msg
                             .edit(ctx, |m| {
                                 m.embed(|e| {
@@ -113,12 +115,17 @@ pub async fn qa_bot(
         }
     }
     // 最后添加完整响应状态
-    status_lines.push("接收到fastgpt完整响应！".to_string());
     initial_msg
         .edit(ctx, |m| {
             m.embed(|e| {
                 e.title("运行状态")
-                    .description(status_lines.join("\n"))
+                    .description(
+                        [
+                            status_lines.join("\n"),
+                            "✅ 接收到fastgpt完整响应！".to_string(),
+                        ]
+                        .join("\n"),
+                    )
                     .color(0x2ecc71)
             })
         })
