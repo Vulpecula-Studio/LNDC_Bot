@@ -7,6 +7,8 @@ use tracing::info;
 use uuid::Uuid;
 
 use super::Context;
+use crate::api::FastGPTMessage;
+use serde_json::json;
 
 // 安全截断字符串助手函数
 fn truncate(s: &str, max_len: usize) -> &str {
@@ -69,10 +71,22 @@ pub async fn qa_bot(
         info!("共收集到{}张图片", api_image_urls.len());
     }
 
-    // 调用FastGPT获取对话响应并收集状态事件
+    // 调用FastGPT获取对话响应，仅使用 messages，开启 stream 和 detail
     let api_client = &ctx.data().api_client;
+    let messages = vec![FastGPTMessage {
+        role: "user".into(),
+        content: json!([
+            {"type": "text", "text": 问题}
+        ]),
+    }];
     let chat_resp = api_client
-        .get_chat_response(&问题, api_image_urls.as_slice().into())
+        .get_chat_response(
+            None, // 不传 chat_id
+            None, // 不传 response_chat_item_id
+            messages, true, // stream 模式
+            true, // detail 模式
+            None, // 不传变量
+        )
         .await?;
     // 动态更新运行状态，根据流式事件中的 flowNodeStatus
     let mut status_lines: Vec<String> = Vec::new();
@@ -108,14 +122,13 @@ pub async fn qa_bot(
         })
         .await?;
     // 保存响应markdown并生成图片
-    let session_id = api_client.session_manager.create_session(&user_id);
     api_client
         .session_manager
-        .save_user_input(&session_id, &问题)
+        .save_user_input(&user_id, &问题)
         .await?;
     api_client
         .session_manager
-        .save_response_markdown(&session_id, &chat_resp.content)
+        .save_response_markdown(&user_id, &chat_resp.content)
         .await?;
     // 更新状态：图片生成中
     initial_msg

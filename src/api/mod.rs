@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -63,8 +63,18 @@ impl APIClient {
     /// 从FastGPT获取响应
     pub async fn get_chat_response(
         &self,
-        prompt: &str,
-        image_urls: Option<&[String]>,
+        // 可选的对话 ID，不传则不使用上下文
+        chat_id: Option<String>,
+        // 可选的响应消息 ID，用于存储本次响应
+        response_chat_item_id: Option<String>,
+        // GPT 聊天消息列表
+        messages: Vec<FastGPTMessage>,
+        // 是否流式
+        stream: bool,
+        // 是否返回详细信息
+        detail: bool,
+        // 可选的模块变量
+        variables: Option<serde_json::Value>,
     ) -> Result<ChatResponse> {
         // 并发请求限流
         let _permit = self
@@ -74,49 +84,23 @@ impl APIClient {
             .await
             .expect("Semaphore closed");
 
-        // 构建消息内容：文本和可选图片
-        let mut content_items = vec![json!({
-            "type": "text",
-            "text": prompt
-        })];
-        if let Some(urls) = image_urls {
-            for url in urls {
-                content_items.push(json!({
-                    "type": "image_url",
-                    "image_url": {"url": url}
-                }));
-            }
-        }
-        let content = json!(content_items);
-
-        // 创建FastGPT消息
-        let message = FastGPTMessage {
-            role: "user".to_string(),
-            content,
-        };
-
-        // 创建请求体 - stream和detail将使用struct中的默认值(false)
+        // 在 move `messages` 之前捕获其长度
+        let msg_count = messages.len();
+        // 构建请求体
         let request = FastGPTChatRequest {
-            chat_id: Some(format!("discord_{}", Uuid::new_v4())),
-            response_chat_item_id: Some(format!("resp_{}", Uuid::new_v4())),
-            variables: Some(json!({
-                "uid": format!("user_{}", Uuid::new_v4()),
-                "name": "DiscordUser"
-            })),
-            messages: vec![message], // 添加消息字段
-            stream: true,            // 启用流式传输
-            detail: true,            // 包含详细信息
+            chat_id,
+            response_chat_item_id,
+            messages,
+            stream,
+            detail,
+            variables,
         };
 
-        info!("发送FastGPT请求，提示词长度: {}", prompt.len());
-        if let Some(urls) = image_urls {
-            if !urls.is_empty() {
-                info!("包含{}张图片", urls.len());
-                for (i, url) in urls.iter().enumerate() {
-                    debug!("图片URL {}: {}", i + 1, url);
-                }
-            }
-        }
+        // 记录消息数量
+        info!(
+            "发送FastGPT请求，消息数: {}, stream: {}, detail: {}",
+            msg_count, stream, detail
+        );
 
         // 发送请求并流式读取SSE事件，重试逻辑保持不变
         let max_retries = 3;
@@ -171,13 +155,14 @@ impl APIClient {
                     info!("SSE 事件: {}", &current_event);
                 } else if let Some(data) = line.strip_prefix("data: ") {
                     events.push((current_event.clone(), data.to_string()));
-                    // 如果收到 fastAnswer，作为最终完整回答并退出
+                    // 如果收到 fastAnswer，处理其内容并结束流式传输
                     if current_event == "fastAnswer" {
-                        // 尝试解析完整快速回答内容
-                        if let Ok(full) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(content) = full.get("content").and_then(|c| c.as_str()) {
-                                answer = content.to_string();
-                                info!("收到快速回答: {}", content);
+                        // 处理 fastAnswer 事件内容
+                        if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
+                            {
+                                answer.push_str(delta);
+                                info!("收到 fastAnswer 增量: {}", delta);
                             }
                         }
                         done = true;
@@ -234,8 +219,14 @@ impl APIClient {
             .save_user_input(&session_id, prompt)
             .await?;
 
-        // 从API获取响应
-        let chat_response = self.get_chat_response(prompt, image_urls).await?;
+        // 构建 messages 并从 API 获取响应
+        let messages = vec![FastGPTMessage {
+            role: "user".into(),
+            content: json!([{"type": "text", "text": prompt}]),
+        }];
+        let chat_response = self
+            .get_chat_response(Some(session_id.clone()), None, messages, false, false, None)
+            .await?;
 
         // 保存响应内容
         self.session_manager
