@@ -147,7 +147,8 @@ impl APIClient {
         // 解析流式SSE事件
         use futures::StreamExt;
         let mut events = Vec::new();
-        let mut answer = String::new();
+        let mut fast_answer = String::new();
+        let mut answer_delta = String::new();
         let mut current_event = String::new();
         let mut byte_stream = response.bytes_stream();
         let mut done = false;
@@ -162,25 +163,41 @@ impl APIClient {
                     events.push((current_event.clone(), data.to_string()));
                     // 实时回调事件
                     on_event(&current_event, data).await?;
-                    // 如果收到 fastAnswer，处理其内容并结束流式传输
-                    if current_event == "fastAnswer" {
-                        // 处理 fastAnswer 事件内容
+                    // 处理 fastAnswer 和 answer 事件，仅追加非空内容并根据 finish_reason 结束
+                    if current_event == "fastAnswer" || current_event == "answer" {
                         if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
+                            // 提取非空增量内容
+                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"]
+                                .as_str()
+                                .filter(|s| !s.trim().is_empty())
                             {
-                                answer.push_str(delta);
-                                debug!("收到 fastAnswer 增量: {}", delta);
+                                if current_event == "fastAnswer" {
+                                    fast_answer.push_str(delta);
+                                } else {
+                                    answer_delta.push_str(delta);
+                                }
+                                debug!("收到 non-empty {} 增量: {}", current_event, delta);
                             }
-                        }
-                        done = true;
-                        break;
-                    }
-                    if current_event == "answer" {
-                        if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
-                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"].as_str()
-                            {
-                                answer.push_str(delta);
-                                debug!("收到答案增量: {}", delta);
+                            // 如果对应 buffer 为空，则尝试完整回答
+                            let buffer = if current_event == "fastAnswer" {
+                                &mut fast_answer
+                            } else {
+                                &mut answer_delta
+                            };
+                            if buffer.is_empty() {
+                                if let Some(full) = resp_val["choices"][0]["message"]["content"]
+                                    .as_str()
+                                    .filter(|s| !s.trim().is_empty())
+                                {
+                                    buffer.push_str(full);
+                                    debug!("收到 {} 完整回答: {}", current_event, full);
+                                }
+                            }
+                            // finish_reason stop 时结束循环
+                            if let Some(reason) = resp_val["choices"][0]["finish_reason"].as_str() {
+                                if reason == "stop" {
+                                    done = true;
+                                }
                             }
                         }
                     }
@@ -190,8 +207,22 @@ impl APIClient {
                 break;
             }
         }
-        debug!("流式传输结束，最终回答: {}", safe_truncate(&answer, 200));
-        let content = answer;
+        // 输出收集到的 fastAnswer 和 answer 内容
+        debug!(
+            "流式传输结束，fastAnswer 内容: {}",
+            safe_truncate(&fast_answer, 200)
+        );
+        debug!(
+            "流式传输结束，answer 内容: {}",
+            safe_truncate(&answer_delta, 200)
+        );
+        // 优先使用 fastAnswer 的内容，否则使用 answer
+        let content = if !fast_answer.trim().is_empty() {
+            fast_answer.clone()
+        } else {
+            answer_delta.clone()
+        };
+        debug!("选定最终回答: {}", safe_truncate(&content, 200));
 
         debug!("成功解析API响应，内容长度: {} 字符", content.len());
 
