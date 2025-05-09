@@ -23,27 +23,16 @@ fn truncate(s: &str, max_len: usize) -> &str {
 
 /// 新增通用问答流程，支持最多10张图片
 async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>) -> Result<()> {
-    // 调试级别：记录调用参数
-    debug!(
-        "run_qa_flow called: question='{0}', image_count={1}",
-        question,
-        image_urls.len()
-    );
+    // 获取用户ID和 API 客户端
+    let user_id = ctx.author().id.to_string();
+    debug!("run_qa_flow 调用, 用户ID: {}, 问题: {}, 图片数量: {}", user_id, question, image_urls.len());
+    let api_client = &ctx.data().api_client;
     // 构造 FastGPT 消息体
     let mut content_array = Vec::new();
     content_array.push(json!({"type":"text","text": question.clone()}));
     for url in &image_urls {
         content_array.push(json!({"type":"image_url","image_url":{"url": url}}));
     }
-    // 调试级别：展示消息结构
-    debug!("FastGPT messages: {:#?}", {
-        let mut msgs = Vec::new();
-        msgs.push(FastGPTMessage {
-            role: "user".into(),
-            content: json!(content_array.clone()),
-        });
-        msgs
-    });
     let messages = vec![FastGPTMessage {
         role: "user".into(),
         content: json!(content_array),
@@ -58,9 +47,6 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
             })
         })
         .await?;
-    // 获取用户ID和 API 客户端
-    let user_id = ctx.author().id.to_string();
-    let api_client = &ctx.data().api_client;
     // 创建新的会话并记录
     let session_id = api_client.session_manager.create_session(&user_id)?;
     // 信息级别：记录简要提问
@@ -69,8 +55,6 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
         ctx.author().name,
         truncate(&question, 30)
     );
-    // 调试级别：记录会话ID
-    debug!("session_id: {}", session_id);
     // 调用 FastGPT 获取对话响应，启用流式与详细模式
     let status_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut chat_resp = api_client
@@ -147,8 +131,6 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
             .await?;
         return Ok(());
     }
-    // 调试级别：记录响应长度
-    debug!("chat response length: {} ", chat_resp.content.len());
     // 添加完整响应状态
     {
         let history = status_lines.lock().unwrap().join("\n");

@@ -8,7 +8,6 @@ use anyhow::Result;
 use chrono::Local;
 use dotenv::dotenv;
 use tracing::{error, info};
-use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -26,11 +25,10 @@ impl FormatTime for LocalOnlyTime {
 async fn main() -> Result<()> {
     // 先加载 .env 中的环境变量，确保日志级别设置生效
     dotenv().ok();
-    // 初始化日志系统，支持环境变量RUST_LOG设置日志级别；默认INFO级
-    let env_filter = EnvFilter::builder()
-        // 默认INFO级，允许使用RUST_LOG覆盖
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
+    // 设置日志级别：INFO 为默认，项目模块启用 DEBUG，可通过 RUST_LOG 环境变量覆盖
+    let default_filter = "info,rust_discord_bot=debug,rust_discord_bot::api=debug,rust_discord_bot::discord=debug,rust_discord_bot::image=debug";
+    // 仅使用默认过滤，避免外部库的 DEBUG 日志
+    let env_filter = EnvFilter::new(default_filter.to_string());
     fmt::fmt()
         .with_env_filter(env_filter)
         .with_timer(LocalOnlyTime) // 只输出日期和时分秒

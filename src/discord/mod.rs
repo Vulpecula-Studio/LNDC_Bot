@@ -62,7 +62,7 @@ pub async fn start_bot(config: &Config) -> Result<()> {
             // 启用命令编辑跟踪
             command_check: Some(|ctx| {
                 Box::pin(async move {
-                    info!("接收到命令: {:?}", ctx.command().qualified_name);
+                    info!("接收到命令: {:?}, 来自用户: {}", ctx.command().qualified_name, ctx.author().id);
                     Ok(true)
                 })
             }),
@@ -200,6 +200,7 @@ async fn event_handler(
                 debug!("命令数据: {:?}", cmd.data);
             } else if let Some(autocomplete) = interaction.as_autocomplete() {
                 debug!("收到自动完成交互: {}", autocomplete.data.name);
+                // 处理自动完成交互
             } else if let Some(msg_component) = interaction.as_message_component() {
                 let cid = &msg_component.data.custom_id;
                 // 处理历史会话分页交互，custom_id 格式: history_{user_id}_{page}_{action}
@@ -379,10 +380,10 @@ async fn event_handler(
                         }
                     }
                 } else {
-                    debug!("收到消息组件交互: {:?}", cid);
+                    // 处理其他类型的交互
                 }
             } else {
-                debug!("收到其他类型的交互");
+                // 处理其他类型的交互
             }
         }
         poise::Event::GuildCreate { guild, is_new: _ } => {

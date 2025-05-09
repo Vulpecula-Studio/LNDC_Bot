@@ -16,13 +16,7 @@ pub struct ImageGenerator {
 impl ImageGenerator {
     pub fn new(config: &Config) -> Result<Self> {
         // 确保至少一个字体文件存在
-        let font_exists = config.font_paths.iter().any(|path| path.exists());
-
-        if !font_exists {
-            debug!("警告: 未找到有效的字体文件，将使用系统默认字体");
-        } else {
-            debug!("找到有效的字体文件: {:?}", config.font_paths);
-        }
+        let _font_exists = config.font_paths.iter().any(|path| path.exists());
 
         Ok(Self {
             config: config.clone(),
@@ -45,11 +39,8 @@ impl ImageGenerator {
             }
         }
 
-        debug!("临时HTML文件创建在: {}", temp_html_path.display());
-
         // 使用wkhtmltoimage渲染HTML为图片
         let image_path = self.render_markdown_to_image(&temp_html_path, output_path)?;
-
         debug!("图片已渲染至: {}", image_path.display());
 
         // 删除临时HTML文件
@@ -123,8 +114,6 @@ impl ImageGenerator {
                 .to_string_lossy()
                 .to_string()
         };
-
-        debug!("使用字体路径: {}", font_path_for_css);
 
         // 创建HTML头部和样式
         let html_header = format!(
@@ -368,8 +357,6 @@ impl ImageGenerator {
         // 构建完整的HTML
         let result = format!("{}{}</body></html>", html_header, html_content);
 
-        debug!("HTML内容生成完成，长度: {} 字节", result.len());
-
         result
     }
 
@@ -378,26 +365,16 @@ impl ImageGenerator {
         // 构建wkhtmltoimage命令
         let wkhtmltoimage_path = match std::env::var("WKHTMLTOIMAGE_PATH") {
             Ok(path) if !path.is_empty() => {
-                debug!("使用自定义wkhtmltoimage路径: {}", path);
                 path
             }
             _ => {
-                debug!("使用默认wkhtmltoimage路径");
                 "wkhtmltoimage".to_string()
             }
         };
 
         // 获取当前工作目录作为基础路径
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let current_dir_str = current_dir.to_string_lossy();
-
-        debug!("当前工作目录: {}", current_dir_str);
-        debug!(
-            "执行命令: {} --quality 95 --width 1024 --enable-local-file-access {} {}",
-            wkhtmltoimage_path,
-            html_path.display(),
-            output_path.display()
-        );
+        let _current_dir_str = current_dir.to_string_lossy();
 
         // 使用wkhtmltoimage渲染HTML为图片
         let output = Command::new(&wkhtmltoimage_path)

@@ -107,6 +107,9 @@ impl APIClient {
             msg_count, stream, detail
         );
 
+        // DEBUG级：记录请求体JSON
+        debug!("请求体 JSON: {}", serde_json::to_string(&request).unwrap_or_default());
+
         // 发送请求并流式读取SSE事件，重试逻辑保持不变
         let max_retries = 3;
         let mut attempts = 0;
@@ -155,11 +158,14 @@ impl APIClient {
         while let Some(item) = byte_stream.next().await {
             let chunk = item.context("读取流式数据失败")?;
             let text = String::from_utf8_lossy(&chunk);
+            debug!("SSE 原始数据: {}", text);
             for line in text.lines() {
                 if let Some(evt) = line.strip_prefix("event: ") {
                     current_event = evt.to_string();
-                    debug!("SSE 事件: {}", &current_event);
+                    // 仅记录事件名称，不单独输出
                 } else if let Some(data) = line.strip_prefix("data: ") {
+                    debug!("SSE 事件 [{}] 数据: {}", current_event, data);
+                    // 记录事件与完整数据
                     events.push((current_event.clone(), data.to_string()));
                     // 实时回调事件
                     on_event(&current_event, data).await?;
@@ -194,7 +200,9 @@ impl APIClient {
                                 }
                             }
                             // finish_reason stop 时结束循环
-                            if let Some(reason) = resp_val["choices"][0]["finish_reason"].as_str() {
+                            if let Some(reason) = resp_val["choices"][0]["finish_reason"]
+                                .as_str()
+                            {
                                 if reason == "stop" {
                                     done = true;
                                 }
@@ -207,23 +215,8 @@ impl APIClient {
                 break;
             }
         }
-        // 输出收集到的 fastAnswer 和 answer 内容
-        debug!(
-            "流式传输结束，fastAnswer 内容: {}",
-            safe_truncate(&fast_answer, 200)
-        );
-        debug!(
-            "流式传输结束，answer 内容: {}",
-            safe_truncate(&answer_delta, 200)
-        );
-        // 优先使用 fastAnswer 的内容，否则使用 answer
-        let content = if !fast_answer.trim().is_empty() {
-            fast_answer.clone()
-        } else {
-            answer_delta.clone()
-        };
-        debug!("选定最终回答: {}", safe_truncate(&content, 200));
-
+        // 合并 fastAnswer 与 answer 两种事件的内容
+        let content = format!("{}{}", fast_answer, answer_delta);
         debug!("成功解析API响应，内容长度: {} 字符", content.len());
 
         Ok(ChatResponse {
