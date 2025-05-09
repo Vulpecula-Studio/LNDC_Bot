@@ -57,7 +57,7 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
     );
     // 调用 FastGPT 获取对话响应，启用流式与详细模式
     let status_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut chat_resp = api_client
+    let chat_resp = api_client
         .get_chat_response(None, None, messages, true, true, None, {
             let status_lines = Arc::clone(&status_lines);
             let ctx = ctx.clone();
@@ -103,20 +103,6 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
             }
         })
         .await?;
-    // 如果首次响应为空，则重试一次
-    if chat_resp.content.trim().is_empty() {
-        debug!("首次FastGPT回复为空，重试获取响应");
-        // 重建消息体并调用，不提供事件回调
-        let retry_messages = vec![FastGPTMessage {
-            role: "user".into(),
-            content: json!(content_array.clone()),
-        }];
-        chat_resp = api_client
-            .get_chat_response(None, None, retry_messages, true, true, None, |_, _| async {
-                Ok(())
-            })
-            .await?;
-    }
     // 如果重试后仍为空，则取消生成图片并提示用户
     if chat_resp.content.trim().is_empty() {
         debug!("重复获取后回复仍为空，取消后续操作");

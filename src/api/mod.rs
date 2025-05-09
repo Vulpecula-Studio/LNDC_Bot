@@ -158,13 +158,12 @@ impl APIClient {
         while let Some(item) = byte_stream.next().await {
             let chunk = item.context("读取流式数据失败")?;
             let text = String::from_utf8_lossy(&chunk);
-            debug!("SSE 原始数据: {}", text);
             for line in text.lines() {
                 if let Some(evt) = line.strip_prefix("event: ") {
                     current_event = evt.to_string();
                     // 仅记录事件名称，不单独输出
                 } else if let Some(data) = line.strip_prefix("data: ") {
-                    debug!("SSE 事件 [{}] 数据: {}", current_event, data);
+                    debug!("EVENT: {} BODY: {}", current_event, data);
                     // 记录事件与完整数据
                     events.push((current_event.clone(), data.to_string()));
                     // 实时回调事件
@@ -172,34 +171,26 @@ impl APIClient {
                     // 处理 fastAnswer 和 answer 事件，仅追加非空内容并根据 finish_reason 结束
                     if current_event == "fastAnswer" || current_event == "answer" {
                         if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
-                            // 提取非空增量内容
-                            if let Some(delta) = resp_val["choices"][0]["delta"]["content"]
+                            // 优先使用 delta，然后 fallback 到 message.content
+                            let delta_content = resp_val["choices"][0]["delta"]["content"]
                                 .as_str()
-                                .filter(|s| !s.trim().is_empty())
-                            {
-                                if current_event == "fastAnswer" {
-                                    fast_answer.push_str(delta);
-                                } else {
-                                    answer_delta.push_str(delta);
-                                }
-                                debug!("收到 non-empty {} 增量: {}", current_event, delta);
-                            }
-                            // 如果对应 buffer 为空，则尝试完整回答
-                            let buffer = if current_event == "fastAnswer" {
-                                &mut fast_answer
+                                .unwrap_or("");
+                            let message_content = resp_val["choices"][0]["message"]["content"]
+                                .as_str()
+                                .unwrap_or("");
+                            let content_to_append = if !delta_content.trim().is_empty() {
+                                delta_content
                             } else {
-                                &mut answer_delta
+                                message_content
                             };
-                            if buffer.is_empty() {
-                                if let Some(full) = resp_val["choices"][0]["message"]["content"]
-                                    .as_str()
-                                    .filter(|s| !s.trim().is_empty())
-                                {
-                                    buffer.push_str(full);
-                                    debug!("收到 {} 完整回答: {}", current_event, full);
+                            if !content_to_append.trim().is_empty() {
+                                if current_event == "fastAnswer" {
+                                    fast_answer.push_str(content_to_append);
+                                } else {
+                                    answer_delta.push_str(content_to_append);
                                 }
                             }
-                            // finish_reason stop 时结束循环
+                            // 检查 finish_reason，stop 时结束循环
                             if let Some(reason) = resp_val["choices"][0]["finish_reason"]
                                 .as_str()
                             {
@@ -215,9 +206,10 @@ impl APIClient {
                 break;
             }
         }
-        // 合并 fastAnswer 与 answer 两种事件的内容
-        let content = format!("{}{}", fast_answer, answer_delta);
+        // 优先使用 fastAnswer 的内容，否则使用 answer
+        let content = if !fast_answer.trim().is_empty() { fast_answer.clone() } else { answer_delta.clone() };
         debug!("成功解析API响应，内容长度: {} 字符", content.len());
+        debug!("获取到的内容: {}", content);
 
         Ok(ChatResponse {
             content,
