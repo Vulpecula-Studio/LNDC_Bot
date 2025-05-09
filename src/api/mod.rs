@@ -108,7 +108,10 @@ impl APIClient {
         );
 
         // DEBUG级：记录请求体JSON
-        debug!("请求体 JSON: {}", serde_json::to_string(&request).unwrap_or_default());
+        debug!(
+            "请求体 JSON: {}",
+            serde_json::to_string(&request).unwrap_or_default()
+        );
 
         // 发送请求并流式读取SSE事件，重试逻辑保持不变
         let max_retries = 3;
@@ -191,9 +194,7 @@ impl APIClient {
                                 }
                             }
                             // 检查 finish_reason，stop 时结束循环
-                            if let Some(reason) = resp_val["choices"][0]["finish_reason"]
-                                .as_str()
-                            {
+                            if let Some(reason) = resp_val["choices"][0]["finish_reason"].as_str() {
                                 if reason == "stop" {
                                     done = true;
                                 }
@@ -207,7 +208,11 @@ impl APIClient {
             }
         }
         // 优先使用 fastAnswer 的内容，否则使用 answer
-        let content = if !fast_answer.trim().is_empty() { fast_answer.clone() } else { answer_delta.clone() };
+        let content = if !fast_answer.trim().is_empty() {
+            fast_answer.clone()
+        } else {
+            answer_delta.clone()
+        };
         debug!("成功解析API响应，内容长度: {} 字符", content.len());
         debug!("获取到的内容: {}", content);
 

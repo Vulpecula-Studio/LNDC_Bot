@@ -25,7 +25,12 @@ fn truncate(s: &str, max_len: usize) -> &str {
 async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>) -> Result<()> {
     // 获取用户ID和 API 客户端
     let user_id = ctx.author().id.to_string();
-    debug!("run_qa_flow 调用, 用户ID: {}, 问题: {}, 图片数量: {}", user_id, question, image_urls.len());
+    debug!(
+        "run_qa_flow 调用, 用户ID: {}, 问题: {}, 图片数量: {}",
+        user_id,
+        question,
+        image_urls.len()
+    );
     let api_client = &ctx.data().api_client;
     // 构造 FastGPT 消息体
     let mut content_array = Vec::new();
@@ -208,7 +213,11 @@ pub async fn history_sessions(ctx: Context<'_>) -> Result<()> {
 
     // 获取用户ID和会话列表
     let user_id = ctx.author().id.to_string();
-    let sessions = ctx.data().api_client.session_manager.get_user_sessions(&user_id);
+    let sessions = ctx
+        .data()
+        .api_client
+        .session_manager
+        .get_user_sessions(&user_id);
 
     // 如果没有会话，直接提示
     if sessions.is_empty() {
@@ -304,8 +313,7 @@ pub async fn help_command(ctx: Context<'_>) -> Result<()> {
 #[poise::command(slash_command, rename = "存储统计")]
 pub async fn storage_stats(
     ctx: Context<'_>,
-    #[description = "是否显示详细的统计信息"]
-    详细信息: Option<bool>,
+    #[description = "是否显示详细的统计信息"] 详细信息: Option<bool>,
 ) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
@@ -383,7 +391,11 @@ pub async fn storage_stats(
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.filter_map(Result::ok) {
                     let path = entry.path();
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) {
+                    if let Some(ext) = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|s| s.to_lowercase())
+                    {
                         if ext == "png" || ext == "jpg" || ext == "jpeg" {
                             if let Ok(meta) = std::fs::metadata(&path) {
                                 ss += meta.len();
@@ -393,7 +405,11 @@ pub async fn storage_stats(
                 }
             }
             size_total += ss;
-            let short = if session.id.len() > 8 { &session.id[..8] } else { &session.id };
+            let short = if session.id.len() > 8 {
+                &session.id[..8]
+            } else {
+                &session.id
+            };
             let time = format_time(session.last_modified);
             per_details.push(format!(
                 "`{}` | 时间: {} | 图片: {} | 大小: {:.2}KB | 已清理: {}",
@@ -425,7 +441,11 @@ pub async fn storage_stats(
                     .field("总会话数", total_sessions.to_string(), true)
                     .field("已清理会话", cleaned_total.to_string(), true)
                     .field("剩余图片数", total_images.to_string(), true)
-                    .field("总图片大小", format!("{:.2} KB", size_total as f64 / 1024.0), true)
+                    .field(
+                        "总图片大小",
+                        format!("{:.2} KB", size_total as f64 / 1024.0),
+                        true,
+                    )
                     .footer(|f| f.text(format!("第 {}/{} 页", page + 1, total_pages)))
                     .field("会话详情", detail_text, false)
             })

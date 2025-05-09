@@ -364,12 +364,8 @@ impl ImageGenerator {
     fn render_markdown_to_image(&self, html_path: &Path, output_path: &Path) -> Result<PathBuf> {
         // 构建wkhtmltoimage命令
         let wkhtmltoimage_path = match std::env::var("WKHTMLTOIMAGE_PATH") {
-            Ok(path) if !path.is_empty() => {
-                path
-            }
-            _ => {
-                "wkhtmltoimage".to_string()
-            }
+            Ok(path) if !path.is_empty() => path,
+            _ => "wkhtmltoimage".to_string(),
         };
 
         // 获取当前工作目录作为基础路径
