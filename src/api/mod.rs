@@ -157,7 +157,7 @@ impl APIClient {
             for line in text.lines() {
                 if let Some(evt) = line.strip_prefix("event: ") {
                     current_event = evt.to_string();
-                    info!("SSE 事件: {}", &current_event);
+                    debug!("SSE 事件: {}", &current_event);
                 } else if let Some(data) = line.strip_prefix("data: ") {
                     events.push((current_event.clone(), data.to_string()));
                     // 实时回调事件
@@ -190,10 +190,10 @@ impl APIClient {
                 break;
             }
         }
-        info!("流式传输结束，最终回答: {}", safe_truncate(&answer, 200));
+        debug!("流式传输结束，最终回答: {}", safe_truncate(&answer, 200));
         let content = answer;
 
-        info!("成功解析API响应，内容长度: {} 字符", content.len());
+        debug!("成功解析API响应，内容长度: {} 字符", content.len());
 
         Ok(ChatResponse {
             content,

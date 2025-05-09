@@ -17,11 +17,7 @@ async fn main() -> Result<()> {
         .from_env_lossy();
     fmt::fmt()
         .with_env_filter(env_filter)
-        .with_target(true) // 显示目标模块
-        .with_thread_ids(true) // 显示线程ID
-        .with_thread_names(true) // 显示线程名称
-        .with_file(true) // 显示文件名
-        .with_line_number(true) // 显示行号
+        .compact() // 使用精简格式，去除多余字段
         .init();
 
     info!("日志系统已初始化");
