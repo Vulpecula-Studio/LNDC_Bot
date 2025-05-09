@@ -23,31 +23,21 @@ fn truncate(s: &str, max_len: usize) -> &str {
     }
 }
 
-/// 向AI提问并获取图片形式的回答
-#[poise::command(slash_command, prefix_command, rename = "答疑bot")]
-pub async fn qa_bot(
+/// 新增通用问答流程，支持最多10张图片
+async fn run_qa_flow(
     ctx: Context<'_>,
-    #[description = "你想问AI的问题"] 问题: String,
-    #[description = "图片链接，可选"] 图片url1: Option<String>,
-    #[description = "第二张图片链接，可选"] 图片url2: Option<String>,
-    #[description = "第三张图片链接，可选"] 图片url3: Option<String>,
+    question: String,
+    image_urls: Vec<String>,
 ) -> Result<()> {
-    // 延迟响应，避免Discord交互超时
-    ctx.defer().await?;
-    // 收集所有有效的图片URL
-    let api_image_urls: Vec<String> = [图片url1, 图片url2, 图片url3]
-        .iter()
-        .filter_map(|opt| opt.clone())
-        .inspect(|url| info!("检测到图片URL: {}", url))
-        .collect();
-    if !api_image_urls.is_empty() {
-        info!("共收集到{}张图片", api_image_urls.len());
+    // 构造 FastGPT 消息体
+    let mut content_array = Vec::new();
+    content_array.push(json!({"type":"text","text": question.clone()}));
+    for url in &image_urls {
+        content_array.push(json!({"type":"image_url","image_url":{"url": url}}));
     }
     let messages = vec![FastGPTMessage {
         role: "user".into(),
-        content: json!([
-            {"type": "text", "text": 问题}
-        ]),
+        content: json!(content_array),
     }];
     // 发送嵌入式初始确认消息
     let initial_msg = ctx
@@ -59,39 +49,28 @@ pub async fn qa_bot(
             })
         })
         .await?;
-
-    // 获取用户ID
+    // 获取用户ID和 API 客户端
     let user_id = ctx.author().id.to_string();
-    // 获取 API 客户端
     let api_client = &ctx.data().api_client;
-    // 创建新的会话并获取 session_id
+    // 创建新的会话并记录
     let session_id = api_client.session_manager.create_session(&user_id)?;
-
-    // 记录命令使用
     info!(
-        "用户 {}({}) 使用了/答疑bot命令，问题: {}{}",
+        "用户 {}({}) 提问: {}",
         ctx.author().name,
         user_id,
-        truncate(&问题, 30),
-        if 问题.chars().count() > 30 {
-            "..."
-        } else {
-            ""
-        }
+        truncate(&question, 30)
     );
-
-    // 调用FastGPT获取对话响应，仅使用消息内容
+    // 调用 FastGPT 获取对话响应，启用流式与详细模式
     let status_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let chat_resp = api_client
         .get_chat_response(
-            None, // 不传 chat_id
-            None, // 不传 response_chat_item_id
+            None,
+            None,
             messages,
-            true, // stream 模式
-            true, // detail 模式
-            None, // 不传变量
+            true,
+            true,
+            None,
             {
-                // 为回调克隆共享状态、上下文和初始消息
                 let status_lines = Arc::clone(&status_lines);
                 let ctx = ctx.clone();
                 let initial_msg = initial_msg.clone();
@@ -100,30 +79,24 @@ pub async fn qa_bot(
                     let ctx = ctx.clone();
                     let evt = evt.to_string();
                     let data = data.to_string();
-                    // 克隆一次 message handle 供异步块使用，避免捕获 initial_msg 并移动
                     let msg = initial_msg.clone();
                     async move {
                         if evt == "flowNodeStatus" {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
                                 if val.get("status").and_then(|s| s.as_str()) == Some("running") {
                                     if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                                        // 更新历史：将前一个节点标记为完成，并为当前节点添加运行状态
                                         let description = {
                                             let mut lines = status_lines.lock().unwrap();
-                                            // 如果已有上一行且是运行状态，则标记为完成
                                             if !lines.is_empty() {
                                                 let last_index = lines.len() - 1;
-                                                if lines[last_index].ends_with(" 🔄") {
-                                                    let trimmed =
-                                                        lines[last_index].trim_end_matches(" 🔄");
-                                                    lines[last_index] = format!("{} ✅", trimmed);
+                                                if lines[last_index].starts_with("🔄 丨") {
+                                                    let node = lines[last_index].trim_start_matches("🔄 丨");
+                                                    lines[last_index] = format!("✅ 丨{}", node);
                                                 }
                                             }
-                                            // 添加当前运行状态
-                                            lines.push(format!("{} 🔄", name));
+                                            lines.push(format!("🔄 丨{}", name));
                                             lines.join("\n")
                                         };
-                                        // 实时编辑嵌入消息，使用 msg 句柄
                                         msg.edit(ctx.clone(), |m| {
                                             m.embed(|e| {
                                                 e.title("运行状态")
@@ -142,11 +115,11 @@ pub async fn qa_bot(
             },
         )
         .await?;
-    // 最后添加完整响应状态
+    // 添加完整响应状态
     {
         let history = status_lines.lock().unwrap().join("\n");
         initial_msg
-            .edit(ctx, |m| {
+            .edit(ctx.clone(), |m| {
                 m.embed(|e| {
                     e.title("运行状态")
                         .description([history, "✅ 接收到fastgpt完整响应！".to_string()].join("\n"))
@@ -155,26 +128,15 @@ pub async fn qa_bot(
             })
             .await?;
     }
-    // 保存用户输入和响应markdown到会话目录
-    api_client
-        .session_manager
-        .save_user_input(&session_id, &问题)
-        .await?;
-    api_client
-        .session_manager
-        .save_response_markdown(&session_id, &chat_resp.content)
-        .await?;
-    // 保存用户提供的图片链接到会话目录
-    let image_urls = api_image_urls.clone();
-    api_client
-        .session_manager
-        .save_user_images(&session_id, &image_urls)
-        .await?;
+    // 保存用户输入、响应和图片链接
+    api_client.session_manager.save_user_input(&session_id, &question).await?;
+    api_client.session_manager.save_response_markdown(&session_id, &chat_resp.content).await?;
+    api_client.session_manager.save_user_images(&session_id, &image_urls).await?;
     // 更新状态：图片生成中
     {
         let history = status_lines.lock().unwrap().join("\n");
         initial_msg
-            .edit(ctx, |m| {
+            .edit(ctx.clone(), |m| {
                 m.embed(|e| {
                     e.title("运行状态")
                         .description([history, "图片生成中...".to_string()].join("\n"))
@@ -183,7 +145,7 @@ pub async fn qa_bot(
             })
             .await?;
     }
-    // 在会话目录生成图片并发送
+    // 生成图片
     let session_dir = api_client.session_manager.get_session_dir(&session_id);
     let image_path = session_dir.join(format!("response_{}.png", Uuid::new_v4()));
     api_client
@@ -193,7 +155,7 @@ pub async fn qa_bot(
     {
         let history = status_lines.lock().unwrap().join("\n");
         initial_msg
-            .edit(ctx, |m| {
+            .edit(ctx.clone(), |m| {
                 m.embed(|e| {
                     e.title("运行状态")
                         .description([history, "图片生成完成！".to_string()].join("\n"))
@@ -202,11 +164,27 @@ pub async fn qa_bot(
             })
             .await?;
     }
-    // 删除初始确认消息，发送最终图片回复
-    initial_msg.delete(ctx).await?;
-    ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path)))
-        .await?;
+    // 删除初始消息并发送最终图片回复
+    initial_msg.delete(ctx.clone()).await?;
+    ctx.send(|reply| reply.attachment(serenity::AttachmentType::Path(&image_path))).await?;
+    Ok(())
+}
 
+/// 向AI提问并获取图片形式的回答
+#[poise::command(slash_command, prefix_command, rename = "答疑bot")]
+pub async fn qa_bot(
+    ctx: Context<'_>,
+    #[description = "你想问AI的问题"] 问题: String,
+    #[description = "图片链接，可选"] 图片url1: Option<String>,
+    #[description = "第二张图片链接，可选"] 图片url2: Option<String>,
+    #[description = "第三张图片链接，可选"] 图片url3: Option<String>,
+) -> Result<()> {
+    ctx.defer().await?;
+    let api_image_urls: Vec<String> = [图片url1, 图片url2, 图片url3]
+        .iter()
+        .filter_map(|opt| opt.clone())
+        .collect();
+    run_qa_flow(ctx, 问题, api_image_urls).await?;
     Ok(())
 }
 
@@ -563,152 +541,17 @@ pub async fn qa_reply_slash(
 // 消息上下文菜单命令：右键→Apps→答疑回复
 #[poise::command(context_menu_command = "message", rename = "答疑回复")]
 pub async fn qa_context_reply(ctx: Context<'_>, message: serenity::Message) -> Result<()> {
-    // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
-    // 构造 FastGPT 消息体
-    let mut content_array = Vec::new();
-    let question_text = format!(
+    let question = format!(
         "需要答疑的用户{} 发送了以下消息：\n{}\n",
         message.author.name, message.content
     );
-    content_array.push(json!({"type": "text", "text": question_text.clone()}));
-    for att in &message.attachments {
-        content_array.push(json!({"type": "image_url", "image_url": {"url": att.url.clone()}}));
-    }
-    // 构建 FastGPT 消息体，始终使用 JSON 数组格式，与 qa_bot 保持一致
-    let messages = vec![FastGPTMessage {
-        role: "user".into(),
-        content: json!(content_array),
-    }];
-    // 发送嵌入式初始确认消息
-    let initial_msg = ctx
-        .send(|reply| {
-            reply.embed(|e| {
-                e.title("✅ 请求已接收")
-                    .description("正在等待fastgpt响应...")
-                    .color(0x3498db)
-            })
-        })
-        .await?;
-    // 获取用户ID和 API 客户端
-    let user_id = ctx.author().id.to_string();
-    let api_client = &ctx.data().api_client;
-    // 创建新的会话
-    let session_id = api_client.session_manager.create_session(&user_id)?;
-    info!(
-        "用户 {}({}) 使用了消息上下文菜单命令，内容预览: {}",
-        ctx.author().name,
-        user_id,
-        truncate(&question_text, 30)
-    );
-    // 调用 FastGPT 获取对话响应，启用流式与详细模式
-    let status_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let chat_resp = api_client
-        .get_chat_response(None, None, messages, true, true, None, {
-            let status_lines = Arc::clone(&status_lines);
-            let ctx = ctx.clone();
-            let initial_msg = initial_msg.clone();
-            move |evt, data| {
-                let status_lines = Arc::clone(&status_lines);
-                let ctx = ctx.clone();
-                let evt = evt.to_string();
-                let data = data.to_string();
-                let msg = initial_msg.clone();
-                async move {
-                    if evt == "flowNodeStatus" {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&data) {
-                            if val.get("status").and_then(|s| s.as_str()) == Some("running") {
-                                if let Some(name) = val.get("name").and_then(|n| n.as_str()) {
-                                    let description = {
-                                        let mut lines = status_lines.lock().unwrap();
-                                        if !lines.is_empty() {
-                                            let last_index = lines.len() - 1;
-                                            if lines[last_index].ends_with(" 🔄") {
-                                                let trimmed =
-                                                    lines[last_index].trim_end_matches(" 🔄");
-                                                lines[last_index] = format!("{} ✅", trimmed);
-                                            }
-                                        }
-                                        lines.push(format!("{} 🔄", name));
-                                        lines.join("\n")
-                                    };
-                                    msg.edit(ctx.clone(), |m| {
-                                        m.embed(|e| {
-                                            e.title("运行状态")
-                                                .description(description.clone())
-                                                .color(0x3498db)
-                                        })
-                                    })
-                                    .await?;
-                                }
-                            }
-                        }
-                    }
-                    Ok(())
-                }
-            }
-        })
-        .await?;
-    // 最后添加完整响应状态
-    {
-        let history = status_lines.lock().unwrap().join("\n");
-        initial_msg
-            .edit(ctx.clone(), |m| {
-                m.embed(|e| {
-                    e.title("运行状态")
-                        .description([history, "✅ 接收到fastgpt完整响应！".to_string()].join("\n"))
-                        .color(0x2ecc71)
-                })
-            })
-            .await?;
-    }
-    // 保存用户输入和响应
-    api_client
-        .session_manager
-        .save_user_input(&session_id, &question_text)
-        .await?;
-    api_client
-        .session_manager
-        .save_response_markdown(&session_id, &chat_resp.content)
-        .await?;
-    // 更新状态：图片生成中
-    {
-        let history = status_lines.lock().unwrap().join("\n");
-        initial_msg
-            .edit(ctx.clone(), |m| {
-                m.embed(|e| {
-                    e.title("运行状态")
-                        .description([history, "图片生成中...".to_string()].join("\n"))
-                        .color(0xf1c40f)
-                })
-            })
-            .await?;
-    }
-    // 生成图片
-    let session_dir = api_client.session_manager.get_session_dir(&session_id);
-    let image_path = session_dir.join(format!("response_{}.png", Uuid::new_v4()));
-    api_client
-        .image_generator
-        .create_image_from_markdown(&chat_resp.content, &image_path)?;
-    // 更新状态：图片生成完成
-    {
-        let history = status_lines.lock().unwrap().join("\n");
-        initial_msg
-            .edit(ctx, |m| {
-                m.embed(|e| {
-                    e.title("运行状态")
-                        .description([history, "图片生成完成！".to_string()].join("\n"))
-                        .color(0x9b59b6)
-                })
-            })
-            .await?;
-    }
-    // 删除初始消息，发送最终图片回复并 @ 用户
-    initial_msg.delete(ctx.clone()).await?;
-    ctx.send(|reply| {
-        reply.content(format!("<@{}>", message.author.id));
-        reply.attachment(serenity::AttachmentType::Path(&image_path))
-    })
-    .await?;
+    let image_urls: Vec<String> = message
+        .attachments
+        .iter()
+        .take(9)
+        .map(|att| att.url.clone())
+        .collect();
+    run_qa_flow(ctx, question, image_urls).await?;
     Ok(())
 }
