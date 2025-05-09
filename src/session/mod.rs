@@ -172,11 +172,12 @@ impl SessionManager {
         let input_path = session_dir.join("input.txt");
         let input_preview = match fs::read_to_string(&input_path) {
             Ok(content) => {
-                // 提取前30个字符作为预览
-                if content.len() > 30 {
-                    format!("{}...", &content[..30])
+                // 提取前30个字符作为预览，使用字符截断避免多字节边界错误
+                let preview: String = content.chars().take(30).collect();
+                if content.chars().count() > 30 {
+                    format!("{}...", preview)
                 } else {
-                    content.clone()
+                    preview
                 }
             }
             Err(_) => String::from("无法读取输入"),

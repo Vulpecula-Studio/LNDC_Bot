@@ -201,7 +201,186 @@ async fn event_handler(
             } else if let Some(autocomplete) = interaction.as_autocomplete() {
                 debug!("收到自动完成交互: {}", autocomplete.data.name);
             } else if let Some(msg_component) = interaction.as_message_component() {
-                debug!("收到消息组件交互: {:?}", msg_component.data.custom_id);
+                let cid = &msg_component.data.custom_id;
+                // 处理历史会话分页交互，custom_id 格式: history_{user_id}_{page}_{action}
+                if cid.starts_with("history_") {
+                    let parts: Vec<&str> = cid.split('_').collect();
+                    if parts.len() == 4 {
+                        let target_user_id = parts[1];
+                        let page: usize = parts[2].parse().unwrap_or(0);
+                        let action = parts[3];
+                        // 仅允许原用户操作
+                        if msg_component.user.id.to_string() != target_user_id {
+                            let _ = msg_component.create_interaction_response(&ctx.http, |response| {
+                                response.kind(serenity::InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|m| {
+                                        m.content("❌ 无权操作此分页").ephemeral(true)
+                                    })
+                            }).await;
+                        } else {
+                            // 计算新页面
+                            let mut new_page = match action {
+                                "prev" if page > 0 => page - 1,
+                                "next" => page + 1,
+                                _ => page,
+                            };
+                            let sessions = _data.api_client.session_manager.get_user_sessions(&target_user_id.to_string());
+                            let per_page = 10;
+                            let total = sessions.len();
+                            let total_pages = (total + per_page - 1) / per_page;
+                            if new_page >= total_pages {
+                                new_page = total_pages.saturating_sub(1);
+                            }
+                            let start = new_page * per_page;
+                            let end = ((new_page + 1) * per_page).min(total);
+                            let sessions_page = &sessions[start..end];
+
+                            let buttons_disabled_prev = new_page == 0;
+                            let buttons_disabled_next = new_page + 1 >= total_pages;
+
+                            let _ = msg_component.create_interaction_response(&ctx.http, |response| {
+                                response.kind(serenity::InteractionResponseType::UpdateMessage)
+                                    .interaction_response_data(|m| {
+                                        m.embed(|e| {
+                                            e.title("📚 你的历史会话列表")
+                                                .color(0x3498db)
+                                                .description(
+                                                    sessions_page
+                                                        .iter()
+                                                        .enumerate()
+                                                        .map(|(i, session)| format_session_info(start + i, session))
+                                                        .collect::<Vec<_>>()
+                                                        .join("\n"),
+                                                )
+                                                .footer(|f| f.text(format!("第 {}/{} 页", new_page + 1, total_pages)))
+                                        })
+                                        .components(|c| {
+                                            c.create_action_row(|row| {
+                                                row.create_button(|b| {
+                                                    b.custom_id(format!("history_{}_{}_prev", target_user_id, new_page))
+                                                        .label("上一页")
+                                                        .style(serenity::ButtonStyle::Secondary)
+                                                        .disabled(buttons_disabled_prev)
+                                                })
+                                                .create_button(|b| {
+                                                    b.custom_id(format!("history_{}_{}_next", target_user_id, new_page))
+                                                        .label("下一页")
+                                                        .style(serenity::ButtonStyle::Secondary)
+                                                        .disabled(buttons_disabled_next)
+                                                })
+                                            })
+                                        })
+                                    })
+                            }).await;
+                        }
+                    }
+                } else if cid.starts_with("stats_") {
+                    // 处理存储统计分页交互，custom_id 格式: stats_{user_id}_{page}_{action}
+                    let parts: Vec<&str> = cid.split('_').collect();
+                    if parts.len() == 4 {
+                        let target_user_id = parts[1];
+                        let page: usize = parts[2].parse().unwrap_or(0);
+                        let action = parts[3];
+                        if msg_component.user.id.to_string() != *target_user_id {
+                            let _ = msg_component.create_interaction_response(&ctx.http, |response| {
+                                response.kind(serenity::InteractionResponseType::ChannelMessageWithSource)
+                                    .interaction_response_data(|m| {
+                                        m.content("❌ 无权操作此分页").ephemeral(true)
+                                    })
+                            }).await;
+                        } else {
+                            // 重新生成统计详情
+                            let sessions = _data.api_client.session_manager.get_user_sessions(&target_user_id.to_string());
+                            let session_dirs: Vec<std::path::PathBuf> = sessions
+                                .iter()
+                                .map(|s| _data.api_client.session_manager.get_session_dir(&s.id))
+                                .collect();
+                            let mut per_details = Vec::new();
+                            let mut cleaned_total = 0;
+                            let mut size_total = 0u64;
+                            for (session, dir) in sessions.iter().zip(session_dirs.iter()) {
+                                let cleaned_flag = dir.join(".cleaned").exists();
+                                if cleaned_flag { cleaned_total += 1; }
+                                let mut ss = 0u64;
+                                if let Ok(entries) = std::fs::read_dir(dir) {
+                                    for entry in entries.filter_map(Result::ok) {
+                                        let path = entry.path();
+                                        if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) {
+                                            if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                                                if let Ok(meta) = std::fs::metadata(&path) {
+                                                    ss += meta.len();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                size_total += ss;
+                                let short = if session.id.len() > 8 { &session.id[..8] } else { &session.id };
+                                let time = format_time(session.last_modified);
+                                per_details.push(format!(
+                                    "`{}` | 时间: {} | 图片: {} | 大小: {:.2}KB | 已清理: {}",
+                                    short,
+                                    time,
+                                    session.images,
+                                    ss as f64 / 1024.0,
+                                    if cleaned_flag { "✅" } else { "❌" }
+                                ));
+                            }
+                            let total_images: u32 = sessions.iter().map(|s| s.images).sum();
+                            let per_page = 10;
+                            let detail_count = per_details.len();
+                            let total_pages = (detail_count + per_page - 1) / per_page;
+                            let mut new_page = match action {
+                                "prev" if page > 0 => page - 1,
+                                "next" => page + 1,
+                                _ => page,
+                            };
+                            if new_page >= total_pages { new_page = total_pages.saturating_sub(1); }
+                            let start = new_page * per_page;
+                            let end = ((new_page + 1) * per_page).min(detail_count);
+                            let page_details = &per_details[start..end];
+                            let mut detail_text = page_details.join("\n");
+                            if detail_text.chars().count() > 1024 {
+                                detail_text = detail_text.chars().take(1021).collect::<String>() + "...";
+                            }
+                            let buttons_disabled_prev = new_page == 0;
+                            let buttons_disabled_next = new_page + 1 >= total_pages;
+                            let _ = msg_component.create_interaction_response(&ctx.http, |response| {
+                                response.kind(serenity::InteractionResponseType::UpdateMessage)
+                                    .interaction_response_data(|m| {
+                                        m.embed(|e| {
+                                            e.title("📊 存储统计（详细）")
+                                                .color(0x3498db)
+                                                .field("总会话数", sessions.len().to_string(), true)
+                                                .field("已清理会话", cleaned_total.to_string(), true)
+                                                .field("剩余图片数", total_images.to_string(), true)
+                                                .field("总图片大小", format!("{:.2} KB", size_total as f64 / 1024.0), true)
+                                                .footer(|f| f.text(format!("第 {}/{} 页", new_page + 1, total_pages)))
+                                                .field("会话详情", detail_text, false)
+                                        })
+                                        .components(|c| {
+                                            c.create_action_row(|row| {
+                                                row.create_button(|b| {
+                                                    b.custom_id(format!("stats_{}_{}_prev", target_user_id, new_page))
+                                                        .label("上一页")
+                                                        .style(serenity::ButtonStyle::Secondary)
+                                                        .disabled(buttons_disabled_prev)
+                                                })
+                                                .create_button(|b| {
+                                                    b.custom_id(format!("stats_{}_{}_next", target_user_id, new_page))
+                                                        .label("下一页")
+                                                        .style(serenity::ButtonStyle::Secondary)
+                                                        .disabled(buttons_disabled_next)
+                                                })
+                                            })
+                                        })
+                                    })
+                            }).await;
+                        }
+                    }
+                } else {
+                    debug!("收到消息组件交互: {:?}", cid);
+                }
             } else {
                 debug!("收到其他类型的交互");
             }

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
-use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 use uuid::Uuid;
@@ -239,36 +238,58 @@ pub async fn history_sessions(ctx: Context<'_>) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
 
-    // 获取用户ID
+    // 获取用户ID和会话列表
     let user_id = ctx.author().id.to_string();
+    let sessions = ctx.data().api_client.session_manager.get_user_sessions(&user_id);
 
-    info!("用户 {}({}) 请求查看历史会话", ctx.author().name, user_id);
-
-    // 获取会话列表
-    let sessions = ctx
-        .data()
-        .api_client
-        .session_manager
-        .get_user_sessions(&user_id);
-
+    // 如果没有会话，直接提示
     if sessions.is_empty() {
         ctx.say("📭 你还没有历史会话记录。").await?;
         return Ok(());
     }
 
-    // 构建会话列表消息
-    let mut message = String::with_capacity(1024);
-    writeln!(message, "📚 **你的历史会话列表**\n").unwrap();
+    // 分页参数
+    let per_page = 10;
+    let total = sessions.len();
+    let total_pages = (total + per_page - 1) / per_page;
+    let page = 0;
+    let start = page * per_page;
+    let end = ((page + 1) * per_page).min(total);
+    let sessions_page = &sessions[start..end];
 
-    for (i, session) in sessions.iter().take(10).enumerate() {
-        writeln!(message, "{}", format_session_info(i, session)).unwrap();
-    }
-
-    if sessions.len() > 10 {
-        writeln!(message, "... 还有 {} 个会话未显示", sessions.len() - 10).unwrap();
-    }
-
-    ctx.say(message).await?;
+    // 发送嵌入式消息并添加翻页按钮
+    ctx.send(|r| {
+        r.embed(|e| {
+            e.title("📚 你的历史会话列表")
+                .color(0x3498db)
+                .description(
+                    sessions_page
+                        .iter()
+                        .enumerate()
+                        .map(|(i, session)| format_session_info(start + i, session))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                )
+                .footer(|f| f.text(format!("第 {}/{} 页", page + 1, total_pages)))
+        })
+        .components(|c| {
+            c.create_action_row(|row| {
+                row.create_button(|b| {
+                    b.custom_id(format!("history_{}_{}_prev", user_id, page))
+                        .label("上一页")
+                        .style(serenity::ButtonStyle::Secondary)
+                        .disabled(true)
+                })
+                .create_button(|b| {
+                    b.custom_id(format!("history_{}_{}_next", user_id, page))
+                        .label("下一页")
+                        .style(serenity::ButtonStyle::Secondary)
+                        .disabled(total_pages <= 1)
+                })
+            })
+        })
+    })
+    .await?;
 
     Ok(())
 }
@@ -315,71 +336,155 @@ pub async fn help_command(ctx: Context<'_>) -> Result<()> {
 #[poise::command(slash_command, rename = "存储统计")]
 pub async fn storage_stats(
     ctx: Context<'_>,
-    #[description = "是否显示详细的统计信息"] _详细信息: Option<bool>,
+    #[description = "是否显示详细的统计信息"]
+    详细信息: Option<bool>,
 ) -> Result<()> {
     // 延迟响应，避免Discord交互超时
     ctx.defer().await?;
-    // 参数 _详细信息 暂未使用
+    // 判断是否展示详细信息
+    let detailed = 详细信息.unwrap_or(false);
     let session_manager = &ctx.data().api_client.session_manager;
     let user_id = ctx.author().id.to_string();
-    // 获取用户会话列表
     let sessions = session_manager.get_user_sessions(&user_id);
     let total_sessions = sessions.len();
-    // 统计已清理会话数与总图片大小（字节）
+    // 准备各会话目录
     let session_dirs: Vec<std::path::PathBuf> = sessions
         .iter()
         .map(|s| session_manager.get_session_dir(&s.id))
         .collect();
-    let (cleaned_count, total_size) = tokio::task::spawn_blocking(move || {
-        let mut cleaned = 0;
-        let mut size = 0u64;
-        for dir in session_dirs {
-            if dir.join(".cleaned").exists() {
-                cleaned += 1;
-            }
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.filter_map(Result::ok) {
-                    let path = entry.path();
-                    if let Some(ext) = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .map(|s| s.to_lowercase())
-                    {
-                        if ext == "png" || ext == "jpg" || ext == "jpeg" {
-                            if let Ok(meta) = std::fs::metadata(&path) {
-                                size += meta.len();
+    if !detailed {
+        // 简略统计
+        let (cleaned_count, total_size) = tokio::task::spawn_blocking(move || {
+            let mut cleaned = 0;
+            let mut size = 0u64;
+            for dir in &session_dirs {
+                if dir.join(".cleaned").exists() {
+                    cleaned += 1;
+                }
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.filter_map(Result::ok) {
+                        let path = entry.path();
+                        if let Some(ext) = path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|s| s.to_lowercase())
+                        {
+                            if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                                if let Ok(meta) = std::fs::metadata(&path) {
+                                    size += meta.len();
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        (cleaned, size)
-    })
-    .await
-    .unwrap_or((0, 0));
-    let total_images: u32 = sessions.iter().map(|s| s.images).sum();
-    // 构造嵌入式消息
-    ctx.send(|r| {
-        r.embed(|e| {
-            e.title("📊 存储统计")
-                .color(0x3498db)
-                .field("总会话数", total_sessions.to_string(), true)
-                .field("已清理会话", cleaned_count.to_string(), true)
-                .field("剩余图片数", total_images.to_string(), true)
-                .field(
-                    "总图片大小",
-                    format!("{:.2} KB", total_size as f64 / 1024.0),
-                    true,
-                )
+            (cleaned, size)
         })
-    })
-    .await?;
+        .await
+        .unwrap_or((0, 0));
+        let total_images: u32 = sessions.iter().map(|s| s.images).sum();
+        ctx.send(|r| {
+            r.embed(|e| {
+                e.title("📊 存储统计")
+                    .color(0x3498db)
+                    .field("总会话数", total_sessions.to_string(), true)
+                    .field("已清理会话", cleaned_count.to_string(), true)
+                    .field("剩余图片数", total_images.to_string(), true)
+                    .field(
+                        "总图片大小",
+                        format!("{:.2} KB", total_size as f64 / 1024.0),
+                        true,
+                    )
+            })
+        })
+        .await?;
+    } else {
+        // 详细统计：包括每个会话大小与清理状态，支持分页
+        let sessions_clone = sessions.clone();
+        let dirs_clone = session_dirs.clone();
+        // 构建每会话详情文本
+        let mut per_details = Vec::new();
+        let mut cleaned_total = 0usize;
+        let mut size_total = 0u64;
+        for (session, dir) in sessions_clone.iter().zip(dirs_clone.iter()) {
+            let cleaned_flag = dir.join(".cleaned").exists();
+            if cleaned_flag {
+                cleaned_total += 1;
+            }
+            let mut ss = 0u64;
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()) {
+                        if ext == "png" || ext == "jpg" || ext == "jpeg" {
+                            if let Ok(meta) = std::fs::metadata(&path) {
+                                ss += meta.len();
+                            }
+                        }
+                    }
+                }
+            }
+            size_total += ss;
+            let short = if session.id.len() > 8 { &session.id[..8] } else { &session.id };
+            let time = format_time(session.last_modified);
+            per_details.push(format!(
+                "`{}` | 时间: {} | 图片: {} | 大小: {:.2}KB | 已清理: {}",
+                short,
+                time,
+                session.images,
+                ss as f64 / 1024.0,
+                if cleaned_flag { "✅" } else { "❌" }
+            ));
+        }
+        let total_images: u32 = sessions_clone.iter().map(|s| s.images).sum();
+        // 分页显示，每页10条
+        let per_page = 10;
+        let detail_count = per_details.len();
+        let total_pages = (detail_count + per_page - 1) / per_page;
+        let page = 0;
+        let start = page * per_page;
+        let end = ((page + 1) * per_page).min(detail_count);
+        let page_details = &per_details[start..end];
+        let mut detail_text = page_details.join("\n");
+        // 裁剪确保长度不超限
+        if detail_text.chars().count() > 1024 {
+            detail_text = detail_text.chars().take(1021).collect::<String>() + "...";
+        }
+        ctx.send(|r| {
+            r.embed(|e| {
+                e.title("📊 存储统计（详细）")
+                    .color(0x3498db)
+                    .field("总会话数", total_sessions.to_string(), true)
+                    .field("已清理会话", cleaned_total.to_string(), true)
+                    .field("剩余图片数", total_images.to_string(), true)
+                    .field("总图片大小", format!("{:.2} KB", size_total as f64 / 1024.0), true)
+                    .footer(|f| f.text(format!("第 {}/{} 页", page + 1, total_pages)))
+                    .field("会话详情", detail_text, false)
+            })
+            .components(|c| {
+                c.create_action_row(|row| {
+                    row.create_button(|b| {
+                        b.custom_id(format!("stats_{}_{}_prev", user_id, page))
+                            .label("上一页")
+                            .style(serenity::ButtonStyle::Secondary)
+                            .disabled(true)
+                    })
+                    .create_button(|b| {
+                        b.custom_id(format!("stats_{}_{}_next", user_id, page))
+                            .label("下一页")
+                            .style(serenity::ButtonStyle::Secondary)
+                            .disabled(total_pages <= 1)
+                    })
+                })
+            })
+        })
+        .await?;
+    }
     Ok(())
 }
 
 // 格式化时间辅助函数
-fn format_time(dt: DateTime<Utc>) -> String {
+pub(super) fn format_time(dt: DateTime<Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
@@ -393,7 +498,7 @@ fn short_session_id(session_id: &str) -> &str {
 }
 
 // 格式化会话信息
-fn format_session_info(index: usize, session: &crate::session::SessionInfo) -> String {
+pub(super) fn format_session_info(index: usize, session: &crate::session::SessionInfo) -> String {
     format!(
         "**{}. 会话 `{}`**\n   问题: {}\n   时间: {}\n   图片数: {}\n",
         index + 1,
