@@ -45,7 +45,6 @@ pub async fn start_bot(config: &Config) -> Result<()> {
         .options(poise::FrameworkOptions {
             commands: vec![
                 qa_bot(),
-                qa_reply_slash(),
                 qa_context_reply(),
                 history_sessions(),
                 help_command(),

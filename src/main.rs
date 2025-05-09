@@ -7,16 +7,19 @@ mod session;
 use anyhow::Result;
 use tracing::{error, info};
 use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::time::LocalTime;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // 初始化日志系统，支持环境变量RUST_LOG设置日志级别；默认INFO级
     let env_filter = EnvFilter::builder()
+        // 默认INFO级，允许使用RUST_LOG覆盖
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
     fmt::fmt()
         .with_env_filter(env_filter)
+        .with_timer(LocalTime::rfc_3339()) // 使用RFC3339时间戳，无微秒
         .compact() // 使用精简格式，去除多余字段
         .init();
 

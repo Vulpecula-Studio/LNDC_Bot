@@ -29,7 +29,7 @@ serde_json = "1"
 
 # 日志
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "local-time"] }
 
 # 错误处理
 anyhow = "1"
