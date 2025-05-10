@@ -7,7 +7,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -114,40 +113,24 @@ impl APIClient {
         );
 
         // 发送请求并流式读取SSE事件，重试逻辑保持不变
-        let max_retries = 3;
-        let mut attempts = 0;
-        let response = loop {
-            attempts += 1;
-            let send_result = self
-                .client
-                .post(&self.config.fastgpt_api_url)
-                .json(&request)
-                .send()
-                .await;
-            match send_result {
-                Ok(resp) if resp.status().is_success() => break resp,
-                Ok(resp) => {
-                    let status = resp.status();
-                    let error_text = resp.text().await.unwrap_or_default();
-                    error!("API请求失败: 状态码 {}, 错误信息: {}", status, error_text);
-                    if attempts >= max_retries {
-                        return Err(anyhow!("API请求失败: {}, {}", status, error_text));
-                    }
-                }
-                Err(e) => {
-                    error!("发送API请求失败: {}", e);
-                    if attempts >= max_retries {
-                        return Err(anyhow!("发送API请求失败: {}", e));
-                    }
-                }
+        let send_result = self
+            .client
+            .post(&self.config.fastgpt_api_url)
+            .json(&request)
+            .send()
+            .await;
+        let response = match send_result {
+            Ok(resp) if resp.status().is_success() => resp,
+            Ok(resp) => {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                error!("API请求失败: 状态码 {}, 错误信息: {}", status, error_text);
+                return Err(anyhow!("API请求失败: {}, {}", status, error_text));
             }
-            let backoff = Duration::from_secs(2_u64.pow(attempts));
-            info!(
-                "重试请求，第 {} 次，等待 {} 秒",
-                attempts,
-                backoff.as_secs()
-            );
-            sleep(backoff).await;
+            Err(e) => {
+                error!("发送API请求失败: {}", e);
+                return Err(anyhow!("发送API请求失败: {}", e));
+            }
         };
 
         // 解析流式SSE事件

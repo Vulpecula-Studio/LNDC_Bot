@@ -108,9 +108,9 @@ async fn run_qa_flow(ctx: Context<'_>, question: String, image_urls: Vec<String>
             }
         })
         .await?;
-    // 如果重试后仍为空，则取消生成图片并提示用户
+    // 检查回复是否为空
     if chat_resp.content.trim().is_empty() {
-        debug!("重复获取后回复仍为空，取消后续操作");
+        debug!("回复内容为空，取消后续操作");
         initial_msg
             .edit(ctx.clone(), |m| {
                 m.embed(|e| {
