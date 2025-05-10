@@ -136,49 +136,87 @@ impl APIClient {
         // 解析流式SSE事件
         use futures::StreamExt;
         let mut events = Vec::new();
-        let mut fast_answer = String::new();
-        let mut answer_delta = String::new();
+        let mut accumulated_response_content = String::new();
         let mut current_event = String::new();
         let mut byte_stream = response.bytes_stream();
         let mut done = false;
+
+        // 用于暂存fastAnswer的完整内容
+        let mut fast_answer_content = String::new();
+        let mut has_fast_answer = false;
+
         while let Some(item) = byte_stream.next().await {
             let chunk = item.context("读取流式数据失败")?;
             let text = String::from_utf8_lossy(&chunk);
             for line in text.lines() {
                 if let Some(evt) = line.strip_prefix("event: ") {
                     current_event = evt.to_string();
-                    // 仅记录事件名称，不单独输出
                 } else if let Some(data) = line.strip_prefix("data: ") {
                     debug!("EVENT: {} BODY: {}", current_event, data);
                     // 记录事件与完整数据
                     events.push((current_event.clone(), data.to_string()));
                     // 实时回调事件
                     on_event(&current_event, data).await?;
-                    // 处理 fastAnswer 和 answer 事件，仅追加非空内容并根据 finish_reason 结束
-                    if current_event == "fastAnswer" || current_event == "answer" {
+
+                    // 处理 fastAnswer 事件，获取完整内容
+                    if current_event == "fastAnswer" {
+                        debug!("开始处理 fastAnswer 事件");
                         if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
-                            // 优先使用 delta，然后 fallback 到 message.content
-                            let delta_content = resp_val["choices"][0]["delta"]["content"]
-                                .as_str()
-                                .unwrap_or("");
-                            let message_content = resp_val["choices"][0]["message"]["content"]
-                                .as_str()
-                                .unwrap_or("");
-                            let content_to_append = if !delta_content.trim().is_empty() {
-                                delta_content
-                            } else {
-                                message_content
-                            };
-                            if !content_to_append.trim().is_empty() {
-                                if current_event == "fastAnswer" {
-                                    fast_answer.push_str(content_to_append);
-                                } else {
-                                    answer_delta.push_str(content_to_append);
+                            debug!("fastAnswer 解析 JSON 成功");
+                            // 先尝试提取完整内容结构
+                            debug!("fastAnswer JSON: {:?}", resp_val);
+
+                            // 添加更详细的路径提取尝试
+                            if let Some(choices) = resp_val.get("choices") {
+                                debug!("找到choices: {:?}", choices);
+                                if let Some(choices_array) = choices.as_array() {
+                                    if let Some(first_choice) = choices_array.get(0) {
+                                        debug!("找到first_choice: {:?}", first_choice);
+                                        if let Some(delta) = first_choice.get("delta") {
+                                            debug!("找到delta: {:?}", delta);
+                                            if let Some(content) = delta.get("content") {
+                                                debug!(
+                                                    "找到content: {:?}, is_string: {}",
+                                                    content,
+                                                    content.is_string()
+                                                );
+                                                if let Some(content_str) = content.as_str() {
+                                                    debug!("提取到fastAnswer内容: {}", content_str);
+                                                    fast_answer_content.push_str(content_str);
+                                                    has_fast_answer = true;
+                                                    debug!(
+                                                        "fastAnswer内容累积后长度: {}",
+                                                        fast_answer_content.len()
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                        } else {
+                            debug!("fastAnswer 解析 JSON 失败");
+                        }
+                    }
+
+                    // 处理普通 answer 事件，累积流式内容
+                    if current_event == "answer" {
+                        if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(data) {
+                            if let Some(content) = resp_val
+                                .pointer("/choices/0/delta/content")
+                                .and_then(|v| v.as_str())
+                            {
+                                debug!("answer delta.content: {}", content);
+                                accumulated_response_content.push_str(content);
+                            }
+
                             // 检查 finish_reason，stop 时结束循环
-                            if let Some(reason) = resp_val["choices"][0]["finish_reason"].as_str() {
+                            if let Some(reason) = resp_val
+                                .pointer("/choices/0/finish_reason")
+                                .and_then(|v| v.as_str())
+                            {
                                 if reason == "stop" {
+                                    debug!("检测到 finish_reason: stop，结束循环");
                                     done = true;
                                 }
                             }
@@ -190,12 +228,27 @@ impl APIClient {
                 break;
             }
         }
-        // 优先使用 fastAnswer 的内容，否则使用 answer
-        let content = if !fast_answer.trim().is_empty() {
-            fast_answer.clone()
+
+        // 优先使用 fastAnswer 的内容，否则使用累积的 answer 内容
+        debug!(
+            "最终决定使用哪个内容源：has_fast_answer={}, fast_answer_content是否为空={}",
+            has_fast_answer,
+            fast_answer_content.is_empty()
+        );
+        let content = if has_fast_answer && !fast_answer_content.is_empty() {
+            debug!(
+                "使用 fastAnswer 内容，长度: {} 字符",
+                fast_answer_content.len()
+            );
+            fast_answer_content
         } else {
-            answer_delta.clone()
+            debug!(
+                "使用累积的 answer 内容，长度: {} 字符",
+                accumulated_response_content.len()
+            );
+            accumulated_response_content
         };
+
         debug!("成功解析API响应，内容长度: {} 字符", content.len());
         debug!("获取到的内容: {}", content);
 
